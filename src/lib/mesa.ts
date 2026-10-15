@@ -20,10 +20,9 @@
  * Todo vive en el navegador de quien lo use. No viaja a ningún sitio, igual
  * que el resto de la aplicación.
  */
+import { ALMACEN_MESAS, conAlmacen } from './almacen'
 import type { Capa } from './cargar'
 
-const BASE = 'chaski'
-const ALMACEN = 'mesas'
 /** Sube cuando la forma de lo guardado cambie y lo viejo deje de servir. */
 const VERSION_FORMATO = 1
 
@@ -68,31 +67,6 @@ export interface MesaResumen {
   guardadaEn: Date
   capas: number
   bytes: number
-}
-
-function abrir(): Promise<IDBDatabase> {
-  return new Promise((resolver, rechazar) => {
-    const peticion = indexedDB.open(BASE, 1)
-    peticion.onupgradeneeded = () => {
-      const bd = peticion.result
-      if (!bd.objectStoreNames.contains(ALMACEN)) bd.createObjectStore(ALMACEN, { keyPath: 'nombre' })
-    }
-    peticion.onsuccess = () => resolver(peticion.result)
-    peticion.onerror = () => rechazar(peticion.error ?? new Error('no se pudo abrir el almacén'))
-  })
-}
-
-function conBase<T>(modo: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest): Promise<T> {
-  return abrir().then(
-    (bd) =>
-      new Promise<T>((resolver, rechazar) => {
-        const trans = bd.transaction(ALMACEN, modo)
-        const peticion = fn(trans.objectStore(ALMACEN))
-        peticion.onsuccess = () => resolver(peticion.result as T)
-        peticion.onerror = () => rechazar(peticion.error ?? new Error('falló la operación'))
-        trans.oncomplete = () => bd.close()
-      }),
-  )
 }
 
 /**
@@ -144,13 +118,13 @@ export async function guardar(
     modo,
     bytes: pesar(guardadas),
   }
-  await conBase('readwrite', (s) => s.put(mesa))
+  await conAlmacen(ALMACEN_MESAS, 'readwrite', (s) => s.put(mesa))
   return mesa
 }
 
 /** Trae una mesa guardada, o null si no está o es de un formato viejo. */
 export async function traer(nombre: string): Promise<Mesa | null> {
-  const mesa = await conBase<Mesa | undefined>('readonly', (s) => s.get(nombre))
+  const mesa = await conAlmacen<Mesa | undefined>(ALMACEN_MESAS, 'readonly', (s) => s.get(nombre))
   if (!mesa) return null
   // Una mesa de un formato anterior no se intenta adivinar: se ignora.
   if (mesa.version !== VERSION_FORMATO) return null
@@ -159,7 +133,7 @@ export async function traer(nombre: string): Promise<Mesa | null> {
 
 /** Las mesas guardadas, de la más reciente a la más antigua. */
 export async function listar(): Promise<MesaResumen[]> {
-  const todas = await conBase<Mesa[]>('readonly', (s) => s.getAll())
+  const todas = await conAlmacen<Mesa[]>(ALMACEN_MESAS, 'readonly', (s) => s.getAll())
   return todas
     .filter((m) => m.version === VERSION_FORMATO)
     .map((m) => ({
@@ -172,7 +146,7 @@ export async function listar(): Promise<MesaResumen[]> {
 }
 
 export async function olvidar(nombre: string): Promise<void> {
-  await conBase('readwrite', (s) => s.delete(nombre))
+  await conAlmacen(ALMACEN_MESAS, 'readwrite', (s) => s.delete(nombre))
 }
 
 /**

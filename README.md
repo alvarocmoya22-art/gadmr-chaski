@@ -253,8 +253,11 @@ Features** —[`pg_featureserv`](https://github.com/CrunchyData/pg_featureserv)
 es un solo ejecutable de solo lectura que lo hace— porque devuelve GeoJSON, que
 es lo que esta aplicación ya sabe leer.
 
-Se escribe la dirección del servicio, se miran sus tablas y se traen las que
-hagan falta. A partir de ahí son capas como cualquier otra. La base nunca queda
+Las conexiones se guardan con nombre y se eligen de una lista, como las de
+QGIS: nombre, anfitrión y puerto. Lo que esa ficha no tiene es usuario ni
+contraseña, y la propia pantalla dice por qué —la credencial de la base vive en
+el servicio, no en el navegador—. Se eligen las tablas y se traen las que hagan
+falta. A partir de ahí son capas como cualquier otra. La base nunca queda
 expuesta al navegador: solo se ve lo que alguien haya decidido publicar, y solo
 para leer.
 

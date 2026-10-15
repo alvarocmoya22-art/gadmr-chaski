@@ -39,6 +39,13 @@ import {
   traerColeccion,
   type Coleccion,
 } from './lib/ogc'
+import {
+  guardar as guardarConexion,
+  listar as listarConexiones,
+  olvidar as olvidarConexion,
+  urlDe,
+  type Conexion,
+} from './lib/conexiones'
 import { ENTRADA, RECETAS } from './lib/recetas'
 import { FUENTE_EJEMPLO, cargarEjemplo, traerDelEjemplo } from './lib/ejemplo'
 import {
@@ -101,8 +108,9 @@ export default function App() {
   const [modo, setModo] = useState<Modo>('mirar')
   const [subModo, setSubModo] = useState<SubModo>('preguntas')
 
-  // Base institucional
-  const [baseUrl, setBaseUrl] = useState('')
+  // Bases de datos
+  const [conexiones, setConexiones] = useState<Conexion[]>([])
+  const [conexionElegida, setConexionElegida] = useState('')
   const [colecciones, setColecciones] = useState<Coleccion[]>([])
   const [conectando, setConectando] = useState(false)
   const [trayendo, setTrayendo] = useState<string | null>(null)
@@ -540,7 +548,38 @@ export default function App() {
 
   /* ── Base institucional ─────────────────────────────────────────────── */
 
+  useEffect(() => {
+    void listarConexiones().then(setConexiones)
+  }, [])
+
+  /** La dirección de la conexión elegida, que es lo que se llama de verdad. */
+  const baseUrl = useMemo(() => {
+    const c = conexiones.find((x) => x.nombre === conexionElegida)
+    return c ? urlDe(c) : ''
+  }, [conexiones, conexionElegida])
+
+  const guardarLaConexion = useCallback(async (c: Omit<Conexion, 'guardadaEn'>) => {
+    const entera = await guardarConexion(c)
+    setConexiones(await listarConexiones())
+    setConexionElegida(entera.nombre)
+    setColecciones([])
+    setErrorBase(null)
+  }, [])
+
+  const olvidarLaConexion = useCallback(
+    async (nombre: string) => {
+      await olvidarConexion(nombre)
+      setConexiones(await listarConexiones())
+      if (conexionElegida === nombre) {
+        setConexionElegida('')
+        setColecciones([])
+      }
+    },
+    [conexionElegida],
+  )
+
   const conectarBase = useCallback(async () => {
+    if (!baseUrl) return
     setConectando(true)
     setErrorBase(null)
     setAvanceBase(null)
@@ -788,8 +827,15 @@ export default function App() {
               onEncuadrar={encuadrar}
               base={
                 <PanelBase
-                  base={baseUrl}
-                  onBase={setBaseUrl}
+                  conexiones={conexiones}
+                  elegida={conexionElegida}
+                  onElegir={(n) => {
+                    setConexionElegida(n)
+                    setColecciones([])
+                    setErrorBase(null)
+                  }}
+                  onGuardar={(c) => void guardarLaConexion(c)}
+                  onOlvidar={(n) => void olvidarLaConexion(n)}
                   colecciones={colecciones}
                   conectando={conectando}
                   trayendo={trayendo}
