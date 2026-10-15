@@ -27,6 +27,9 @@ interface Props {
   error: string | null
   onConectar: () => void
   onTraer: (c: Coleccion) => void
+  /** La clave del servicio, si lo pide. No se guarda. */
+  clave: string
+  onClave: (v: string) => void
 }
 
 const campo =
@@ -46,6 +49,8 @@ export default function PanelBase({
   error,
   onConectar,
   onTraer,
+  clave,
+  onClave,
 }: Props) {
   const [abierto, setAbierto] = useState(false)
   const [ficha, setFicha] = useState<Ficha | null>(null)
@@ -91,7 +96,27 @@ export default function PanelBase({
               </label>
 
               {actual && (
-                <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">{urlDe(actual)}</p>
+                <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                  {urlDe(actual)}
+                  {actual.baseDatos && ` · base ${actual.baseDatos}`}
+                </p>
+              )}
+
+              {actual?.usuario && (
+                <label className="block">
+                  <span className={rotulo}>Clave de {actual.usuario}</span>
+                  <input
+                    type="password"
+                    value={clave}
+                    onChange={(e) => onClave(e.target.value)}
+                    autoComplete="off"
+                    className={campo}
+                  />
+                  <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                    No se guarda: se vuelve a pedir la próxima vez. Dejarla escrita en el
+                    navegador la deja a mano de cualquiera que se siente en este equipo.
+                  </span>
+                </label>
               )}
 
               <div className="flex flex-wrap gap-1">
@@ -185,6 +210,35 @@ export default function PanelBase({
                   onChange={(e) => setFicha({ ...ficha, seguro: e.target.checked })}
                 />
                 El servicio va por https
+              </label>
+
+              <label className="block">
+                <span className={rotulo}>Base de datos</span>
+                <input
+                  value={ficha.baseDatos}
+                  onChange={(e) => setFicha({ ...ficha, baseDatos: e.target.value })}
+                  placeholder="riobamba"
+                  className={campo}
+                />
+                <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                  Solo para reconocer la conexión: no se envía. Cuál es la base lo decide el
+                  servicio en su configuración.
+                </span>
+              </label>
+
+              <label className="block">
+                <span className={rotulo}>Usuario del servicio (opcional)</span>
+                <input
+                  value={ficha.usuario}
+                  onChange={(e) => setFicha({ ...ficha, usuario: e.target.value })}
+                  autoComplete="off"
+                  className={campo}
+                />
+                <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                  Solo si alguien puso una puerta delante del servicio.{' '}
+                  <strong>No es el usuario de PostgreSQL</strong>: ese va en la configuración
+                  del servicio, no aquí.
+                </span>
               </label>
 
               <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">

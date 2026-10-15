@@ -56,9 +56,17 @@ interface RespuestaColecciones {
 }
 
 /** Las tablas que el servicio publica. */
-export async function listarColecciones(base: string): Promise<Coleccion[]> {
+export async function listarColecciones(
+  base: string,
+  cabeceras: Record<string, string> = {},
+): Promise<Coleccion[]> {
   const url = `${limpiarBase(base)}/collections?f=json`
-  const resp = await fetch(url)
+  const resp = await fetch(url, { headers: cabeceras })
+  if (resp.status === 401 || resp.status === 403) {
+    throw new Error(
+      'El servicio pide usuario y clave, o los que diste no valen. Ponlos en la ficha de la conexión.',
+    )
+  }
   if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`)
   const datos = (await resp.json()) as RespuestaColecciones
   if (!Array.isArray(datos.collections)) {
@@ -92,6 +100,7 @@ export async function traerColeccion(
   base: string,
   coleccion: Coleccion,
   alAvanzar?: (traidos: number, total: number | null) => void,
+  cabeceras: Record<string, string> = {},
 ): Promise<{ capa: Capa; cortada: boolean; total: number | null }> {
   const raiz = limpiarBase(base)
   let url: string | null = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}`
@@ -100,7 +109,7 @@ export async function traerColeccion(
   let cortada = false
 
   while (url) {
-    const resp: Response = await fetch(url)
+    const resp: Response = await fetch(url, { headers: cabeceras })
     if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`)
     const pagina = (await resp.json()) as Pagina
     for (const f of pagina.features ?? []) {

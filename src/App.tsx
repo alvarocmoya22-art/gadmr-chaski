@@ -40,6 +40,7 @@ import {
   type Coleccion,
 } from './lib/ogc'
 import {
+  cabeceraDe,
   guardar as guardarConexion,
   listar as listarConexiones,
   olvidar as olvidarConexion,
@@ -111,6 +112,12 @@ export default function App() {
   // Bases de datos
   const [conexiones, setConexiones] = useState<Conexion[]>([])
   const [conexionElegida, setConexionElegida] = useState('')
+  /*
+   * La clave del servicio vive aquí y no en el almacén: se pierde al cerrar la
+   * pestaña, que es lo que debe pasar con una contraseña en un equipo
+   * compartido.
+   */
+  const [claveServicio, setClaveServicio] = useState('')
   const [colecciones, setColecciones] = useState<Coleccion[]>([])
   const [conectando, setConectando] = useState(false)
   const [trayendo, setTrayendo] = useState<string | null>(null)
@@ -552,11 +559,16 @@ export default function App() {
     void listarConexiones().then(setConexiones)
   }, [])
 
+  const conexion = useMemo(
+    () => conexiones.find((x) => x.nombre === conexionElegida) ?? null,
+    [conexiones, conexionElegida],
+  )
   /** La dirección de la conexión elegida, que es lo que se llama de verdad. */
-  const baseUrl = useMemo(() => {
-    const c = conexiones.find((x) => x.nombre === conexionElegida)
-    return c ? urlDe(c) : ''
-  }, [conexiones, conexionElegida])
+  const baseUrl = useMemo(() => (conexion ? urlDe(conexion) : ''), [conexion])
+  const cabeceras = useMemo(
+    () => cabeceraDe(conexion?.usuario ?? '', claveServicio),
+    [conexion, claveServicio],
+  )
 
   const guardarLaConexion = useCallback(async (c: Omit<Conexion, 'guardadaEn'>) => {
     const entera = await guardarConexion(c)
@@ -584,7 +596,7 @@ export default function App() {
     setErrorBase(null)
     setAvanceBase(null)
     try {
-      const lista = await listarColecciones(baseUrl)
+      const lista = await listarColecciones(baseUrl, cabeceras)
       setColecciones(lista)
       if (lista.length === 0) setErrorBase('El servicio respondió, pero no publica ninguna tabla.')
     } catch (e) {
@@ -592,17 +604,21 @@ export default function App() {
       setErrorBase(explicarFallo(e, baseUrl))
     }
     setConectando(false)
-  }, [baseUrl])
+  }, [baseUrl, cabeceras])
 
   const traerDeBase = useCallback(
     async (c: Coleccion) => {
       setTrayendo(c.id)
       setErrorBase(null)
       try {
-        const { capa: nueva, cortada, total } = await traerColeccion(baseUrl, c, (traidos, cuantos) =>
-          setAvanceBase(
-            `${c.titulo}: ${numero(traidos)}${cuantos ? ` de ${numero(cuantos)}` : ''} registros…`,
-          ),
+        const { capa: nueva, cortada, total } = await traerColeccion(
+          baseUrl,
+          c,
+          (traidos, cuantos) =>
+            setAvanceBase(
+              `${c.titulo}: ${numero(traidos)}${cuantos ? ` de ${numero(cuantos)}` : ''} registros…`,
+            ),
+          cabeceras,
         )
         recibir([nueva])
         setAvanceBase(null)
@@ -620,7 +636,7 @@ export default function App() {
       }
       setTrayendo(null)
     },
-    [baseUrl, recibir],
+    [baseUrl, cabeceras, recibir],
   )
 
   /* ── Modo Mirar ─────────────────────────────────────────────────────── */
@@ -833,6 +849,7 @@ export default function App() {
                     setConexionElegida(n)
                     setColecciones([])
                     setErrorBase(null)
+                    setClaveServicio('')
                   }}
                   onGuardar={(c) => void guardarLaConexion(c)}
                   onOlvidar={(n) => void olvidarLaConexion(n)}
@@ -843,6 +860,8 @@ export default function App() {
                   error={errorBase}
                   onConectar={() => void conectarBase()}
                   onTraer={(c) => void traerDeBase(c)}
+                  clave={claveServicio}
+                  onClave={setClaveServicio}
                 />
               }
             />

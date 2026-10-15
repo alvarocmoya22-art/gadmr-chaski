@@ -22,6 +22,23 @@ export interface Conexion {
   seguro: boolean
   /** Ruta, cuando el servicio cuelga de una: por ejemplo `/featureserv`. */
   ruta: string
+  /**
+   * Qué base hay al otro lado.
+   *
+   * **No se envía a ninguna parte**: cuál es la base la decide el servicio en
+   * su propia configuración. Se apunta aquí para reconocer la conexión, como
+   * en el diálogo de QGIS, y para que dos conexiones al mismo equipo contra
+   * bases distintas no se confundan.
+   */
+  baseDatos: string
+  /**
+   * Usuario del **servicio**, si está protegido con una clave propia.
+   *
+   * No es el usuario de PostgreSQL: ese vive en la configuración del servicio
+   * que publica las tablas. Este solo hace falta cuando alguien ha puesto una
+   * puerta delante del servicio, y entonces viaja como autenticación HTTP.
+   */
+  usuario: string
   guardadaEn: Date
 }
 
@@ -31,6 +48,21 @@ export const CONEXION_NUEVA: Omit<Conexion, 'guardadaEn'> = {
   puerto: 9000,
   seguro: false,
   ruta: '',
+  baseDatos: '',
+  usuario: '',
+}
+
+/**
+ * La cabecera de autenticación, cuando hay usuario y clave.
+ *
+ * **La clave no se guarda.** Vive en memoria mientras la pestaña esté abierta
+ * y se vuelve a pedir en la siguiente visita. Dejar una contraseña escrita en
+ * el almacén del navegador es dejarla a mano de cualquiera que se siente en
+ * ese equipo, y aquí no hace falta para que la cosa funcione.
+ */
+export function cabeceraDe(usuario: string, clave: string): Record<string, string> {
+  if (!usuario.trim() || !clave) return {}
+  return { Authorization: `Basic ${btoa(`${usuario.trim()}:${clave}`)}` }
 }
 
 /** La dirección que de verdad se llama. */

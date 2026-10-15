@@ -73,9 +73,22 @@ nada a nadie y no queda nada expuesto. CHASKI se abre en local y le apunta.
 Si después lo quiere usar toda la dirección, se mueve a un servidor del GADM y
 la dirección cambia; en CHASKI eso es escribir otra URL.
 
+## Dónde va cada credencial
+
+Esto es lo que más confunde, así que con tus datos delante:
+
+| | Dónde se pone | Qué es |
+|---|---|---|
+| `172.16.0.234`, `5432`, `riobamba` | `pg_featureserv.toml` | La base, como en QGIS |
+| **Tu usuario y contraseña de PostgreSQL** | `pg_featureserv.toml` | **No van en CHASKI.** El navegador no habla con Postgres |
+| `localhost`, `9000` | Ficha de CHASKI | Dónde escucha el servicio |
+| `riobamba` (otra vez) | Ficha de CHASKI | Solo una etiqueta para reconocerla; no se envía |
+| Usuario y clave del *servicio* | Ficha de CHASKI | Solo si alguien pone una puerta delante. **No son los de Postgres** |
+
 ## La configuración
 
-`pg_featureserv.toml`, al lado del ejecutable. **La contraseña la escribes tú**:
+`pg_featureserv.toml`, al lado del ejecutable, con tus datos ya puestos. **Lo
+único que falta es la contraseña, que la escribes tú:**
 
 ```toml
 [Server]
@@ -99,9 +112,19 @@ Title = "Base gráfica · GADM Riobamba"
 Description = "Capas publicadas para CHASKI. Solo lectura."
 ```
 
+Si prefieres no escribir la contraseña en el archivo, `pg_featureserv` también
+lee la variable de entorno `DATABASE_URL`, y entonces `DbConnection` se deja
+comentado:
+
+```
+set DATABASE_URL=postgresql://chaski_lector:LA-CONTRASEÑA@172.16.0.234:5432/riobamba
+pg_featureserv --config pg_featureserv.toml
+```
+
 `HttpHost = "127.0.0.1"` hace que el servicio **solo escuche en tu máquina**.
 Para que lo alcancen otros equipos habría que poner `0.0.0.0`, y entonces hay
-que estar seguro de que lo publicado puede verlo toda la red.
+que estar seguro de que lo publicado puede verlo toda la red —o ponerle una
+puerta con usuario y clave, que es para lo que CHASKI tiene esos dos campos—.
 
 ## Cómo se prueba
 
