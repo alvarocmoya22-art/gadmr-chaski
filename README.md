@@ -207,6 +207,29 @@ lo que ya funciona.
 Las cuatro capas de `public/ejemplo/` se quedan como copia local a propósito:
 probar la aplicación no debería depender de que otro sitio esté arriba.
 
+## La mesa de trabajo
+
+Lo que hay cargado se guarda solo, un segundo y medio después del último
+cambio, y al volver se ofrece recuperarlo. No se restaura sin preguntar:
+encontrarse quince capas que uno no acaba de cargar desconcierta más de lo que
+ayuda.
+
+Se guarda en IndexedDB, dentro del navegador de quien lo use. No viaja a ningún
+sitio, igual que el resto.
+
+**Lo del catálogo no se guarda entero.** Una capa que vino del visor o del
+ejemplo se apunta por su nombre de archivo y se vuelve a traer al recuperar: el
+catastro son quince megas que ya están publicados. Lo que sí se guarda entero
+es lo que no se puede volver a pedir —los archivos que alguien soltó y los
+resultados que calculó—, así que una mesa con cuatro capas del municipio, un
+CSV propio y un conteo por barrio ocupa unos 150 KB.
+
+La mesa recuerda también en qué modo se estaba trabajando. Hoy eso son las tres
+pestañas del panel; cuando la aplicación se una con el visor en los tres modos
+—mirar, analizar y contar— es ese mismo campo el que los recuerda, y por eso se
+guarda como texto libre y no como una lista cerrada que habría que migrar
+después.
+
 ## Lo que no está, y por qué
 
 De las 23 herramientas de GOAT faltan siete, todas por la misma razón: piden
@@ -232,7 +255,8 @@ del visor de territorio.
 - **Filtrar una capa a una capa nueva.** Hoy el filtro por campo y valor actúa
   dentro de cada herramienta, pero no deja una capa filtrada que se pueda usar
   como destino de otra.
-- **Guardar el trabajo.** Recargar la página deja la mesa limpia.
+- **Mesas con nombre.** Hoy hay una sola mesa, la de la última vez. Poder
+  guardar varias con su nombre es el paso siguiente.
 
 ## Correrlo
 

@@ -55,6 +55,14 @@ export interface Capa {
   /** Cómo se obtuvo, en una frase, para que el resultado no quede huérfano. */
   metodo?: string
   /**
+   * De qué catálogo salió, cuando salió de uno.
+   *
+   * Lo usa la mesa de trabajo: una capa del municipio no hace falta guardarla
+   * entera —el catastro son quince megas— porque basta con apuntar cuál era y
+   * volver a traerla al recuperar.
+   */
+  fuente?: { tipo: 'ejemplo' | 'municipio'; archivo: string }
+  /**
    * Las columnas que traen fechas, si las hay.
    *
    * Se detectan al cargar y no cuando alguien las pide: de aquí sale que el

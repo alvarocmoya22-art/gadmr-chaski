@@ -39,6 +39,21 @@ export const FUENTE_EJEMPLO =
  * Pasan por el mismo lector que un archivo soltado a mano: así no hay un
  * camino especial para el ejemplo que pueda funcionar cuando el de verdad no.
  */
+/** Una sola capa del ejemplo, por su nombre de archivo. */
+export async function traerDelEjemplo(archivo: string): Promise<Capa | null> {
+  const entrada = CAPAS_EJEMPLO.find((c) => c.archivo === archivo)
+  if (!entrada) return null
+  const resp = await fetch(`${import.meta.env.BASE_URL}ejemplo/${entrada.archivo}`)
+  if (!resp.ok) throw new Error(`no se pudo traer (${resp.status})`)
+  const { capa } = await leerArchivo(new File([await resp.blob()], entrada.archivo))
+  return {
+    ...capa,
+    nombre: entrada.nombre,
+    origen: `Ejemplo · ${entrada.nota}`,
+    fuente: { tipo: 'ejemplo', archivo: entrada.archivo },
+  }
+}
+
 export async function cargarEjemplo(): Promise<{ capas: Capa[]; fallos: string[] }> {
   const base = import.meta.env.BASE_URL
   const capas: Capa[] = []
@@ -49,7 +64,12 @@ export async function cargarEjemplo(): Promise<{ capas: Capa[]; fallos: string[]
       if (!resp.ok) throw new Error(`no se pudo traer (${resp.status})`)
       const archivo = new File([await resp.blob()], entrada.archivo)
       const { capa } = await leerArchivo(archivo)
-      capas.push({ ...capa, nombre: entrada.nombre, origen: `Ejemplo · ${entrada.nota}` })
+      capas.push({
+        ...capa,
+        nombre: entrada.nombre,
+        origen: `Ejemplo · ${entrada.nota}`,
+        fuente: { tipo: 'ejemplo', archivo: entrada.archivo },
+      })
     } catch (e) {
       fallos.push(`${entrada.nombre}: ${e instanceof Error ? e.message : 'no se pudo cargar'}`)
     }

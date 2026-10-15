@@ -19,7 +19,7 @@
  * El nombre es el chaski, el mensajero que corría los caminos del
  * Tahuantinsuyo llevando información de un tambo al siguiente.
  */
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Mapa, { type Captura } from './components/Mapa'
 import PanelCapas from './components/PanelCapas'
 import PanelAnalisis from './components/PanelAnalisis'
@@ -31,8 +31,18 @@ import { cajaDeCapa, piezasDe, puntosDe, recuadroDe, type PuntoAnalisis } from '
 import { HERRAMIENTAS, herramientasPara, type Herramienta } from './lib/herramientas'
 import { diagnosticar, type Informe } from './lib/diagnostico'
 import { ENTRADA, RECETAS } from './lib/recetas'
-import { FUENTE_EJEMPLO, cargarEjemplo } from './lib/ejemplo'
-import { FUENTE_MUNICIPIO, traerVarias, type CapaMunicipal } from './lib/municipio'
+import { FUENTE_EJEMPLO, cargarEjemplo, traerDelEjemplo } from './lib/ejemplo'
+import { FUENTE_MUNICIPIO, traerPorArchivo, traerVarias, type CapaMunicipal } from './lib/municipio'
+import {
+  MESA_ACTUAL,
+  cuandoLegible,
+  guardar as guardarMesa,
+  olvidar as olvidarMesa,
+  pesoLegible,
+  reconstruir,
+  traer as traerMesa,
+  type Mesa,
+} from './lib/mesa'
 import { TODA_LA_CATEGORIA } from './lib/hotspot'
 import { MAPA_BASE_INICIAL } from './config/mapasBase'
 import { numero } from './lib/format'
@@ -74,6 +84,11 @@ export default function App() {
   const [mapaBase, setMapaBase] = useState(MAPA_BASE_INICIAL)
   const [encuadre, setEncuadre] = useState<[number, number, number, number] | null>(null)
   const capturaRef = useRef<(() => Promise<Captura | null>) | null>(null)
+
+  // La mesa de trabajo: lo guardado y lo que se ofrece recuperar al entrar.
+  const [mesaGuardada, setMesaGuardada] = useState<Mesa | null>(null)
+  const [ofrecida, setOfrecida] = useState<Mesa | null>(null)
+  const [recuperando, setRecuperando] = useState(false)
 
   const capa = capas.find((c) => c.id === capaId) ?? null
   const herramienta = HERRAMIENTAS.find((h) => h.clave === herramientaClave) ?? null
@@ -403,6 +418,73 @@ export default function App() {
     [capas],
   )
 
+  /** De qué catálogo vuelve a salir una capa apuntada en la mesa. */
+  const traerDeCatalogo = useCallback(
+    (tipo: 'ejemplo' | 'municipio', archivo: string) =>
+      tipo === 'ejemplo' ? traerDelEjemplo(archivo) : traerPorArchivo(archivo),
+    [],
+  )
+
+  /*
+   * Al entrar se mira si quedó una mesa de la última vez, pero no se restaura
+   * sola: se ofrece. Volver y encontrarse quince capas que uno no acaba de
+   * cargar desconcierta más de lo que ayuda, y recuperar puede tardar si hay
+   * que volver a traer el catastro.
+   */
+  useEffect(() => {
+    void traerMesa(MESA_ACTUAL).then((m) => {
+      if (m && m.capas.length > 0) setOfrecida(m)
+    })
+  }, [])
+
+  const recuperarMesa = useCallback(async () => {
+    if (!ofrecida) return
+    setRecuperando(true)
+    const { capas: suyas, fallos } = await reconstruir(ofrecida, traerDeCatalogo)
+    setCapas(suyas)
+    setMapaBase(ofrecida.mapaBase)
+    if (['guiado', 'herramientas', 'informe'].includes(ofrecida.modo)) {
+      setModo(ofrecida.modo as Modo)
+    }
+    const caja = suyas[0] ? cajaDeCapa(suyas[0]) : null
+    if (caja) setEncuadre(caja)
+    setRecados([
+      { texto: `Mesa recuperada: ${numero(suyas.length)} capas.`, mal: false },
+      ...fallos.map((f) => ({ texto: f, mal: true })),
+    ])
+    setOfrecida(null)
+    setRecuperando(false)
+  }, [ofrecida, traerDeCatalogo])
+
+  /*
+   * La mesa se guarda sola, un segundo y medio después del último cambio.
+   *
+   * Sin esa espera, cargar cuatro capas seguidas escribiría cuatro veces una
+   * mesa que crece con cada una. Y no se guarda mientras hay una mesa ofrecida
+   * sin responder, para no pisar lo que se está a punto de recuperar.
+   */
+  useEffect(() => {
+    if (ofrecida || recuperando) return
+    if (capas.length === 0) return
+    const reloj = setTimeout(() => {
+      void guardarMesa(MESA_ACTUAL, capas, mapaBase, modo)
+        .then(setMesaGuardada)
+        .catch(() =>
+          setRecados((previos) => [
+            ...previos,
+            { texto: 'No se pudo guardar la mesa: el navegador no dio espacio.', mal: true },
+          ]),
+        )
+    }, 1500)
+    return () => clearTimeout(reloj)
+  }, [capas, mapaBase, modo, ofrecida, recuperando])
+
+  const olvidar = useCallback(async () => {
+    await olvidarMesa(MESA_ACTUAL)
+    setMesaGuardada(null)
+    setRecados([{ texto: 'Mesa olvidada. Lo que hay en pantalla sigue aquí.', mal: false }])
+  }, [])
+
   const puntos = useMemo(() => ultimo?.puntos ?? [], [ultimo])
 
   const pestania = (clave: Modo, rotulo: string, nota: string) => (
@@ -445,6 +527,45 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1">
           <aside className="w-[23rem] shrink-0 space-y-4 overflow-y-auto border-r border-[var(--gr-linea)] bg-[var(--gr-fondo)] p-3">
+            {/*
+              La mesa de la última vez, ofrecida y no impuesta.
+
+              Va antes que nada porque es lo primero que hay que decidir al
+              entrar: seguir donde se quedó o empezar limpio. Restaurarla sola
+              desconcierta más de lo que ayuda.
+            */}
+            {ofrecida && (
+              <div className="space-y-2 rounded-md border border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)] p-2">
+                <p className="text-sm font-semibold text-[var(--gr-tinta)]">
+                  Tienes una mesa de la última vez
+                </p>
+                <p className="text-[11px] leading-snug text-[var(--gr-tinta-2)]">
+                  {numero(ofrecida.capas.length)}{' '}
+                  {ofrecida.capas.length === 1 ? 'capa' : 'capas'}, guardada{' '}
+                  {cuandoLegible(ofrecida.guardadaEn)}
+                  {ofrecida.bytes > 0 && ` · ${pesoLegible(ofrecida.bytes)}`}. Las capas del
+                  municipio se vuelven a traer del visor.
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void recuperarMesa()}
+                    disabled={recuperando}
+                    className="flex-1 rounded bg-[var(--gr-azul-500)] px-2 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {recuperando ? 'Recuperando…' : 'Seguir donde quedé'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOfrecida(null)}
+                    className="rounded border border-[var(--gr-linea-fuerte)] px-2 py-1.5 text-sm text-[var(--gr-tinta-2)]"
+                  >
+                    Empezar limpio
+                  </button>
+                </div>
+              </div>
+            )}
+
             <PanelCapas
               capas={capas}
               cargando={cargando}
@@ -460,6 +581,23 @@ export default function App() {
               onQuitar={quitar}
               onEncuadrar={encuadrar}
             />
+
+            {mesaGuardada && !ofrecida && capas.length > 0 && (
+              <p className="flex flex-wrap items-baseline gap-x-2 text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                <span>
+                  Mesa guardada {cuandoLegible(mesaGuardada.guardadaEn)}
+                  {mesaGuardada.bytes > 0 && ` · ${pesoLegible(mesaGuardada.bytes)}`}, en este
+                  navegador.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void olvidar()}
+                  className="underline decoration-dotted hover:text-[var(--gr-error)]"
+                >
+                  Olvidarla
+                </button>
+              </p>
+            )}
 
             {recados.length > 0 && (
               <ul className="space-y-1">

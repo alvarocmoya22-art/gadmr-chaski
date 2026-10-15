@@ -131,12 +131,28 @@ export async function traerDelVisor(entrada: CapaMunicipal): Promise<Capa> {
     // que cualquier otra capa, sin un camino especial que pueda divergir.
     const archivo = new File([JSON.stringify(geo)], `${entrada.nombre}.geojson`)
     const { capa } = await leerArchivo(archivo)
-    return { ...capa, nombre: entrada.nombre, origen: `Visor · ${entrada.nota}` }
+    return {
+      ...capa,
+      nombre: entrada.nombre,
+      origen: `Visor · ${entrada.nota}`,
+      fuente: { tipo: 'municipio', archivo: entrada.archivo },
+    }
   }
 
   const archivo = new File([await resp.blob()], entrada.archivo)
   const { capa } = await leerArchivo(archivo)
-  return { ...capa, nombre: entrada.nombre, origen: `Visor · ${entrada.nota}` }
+  return {
+    ...capa,
+    nombre: entrada.nombre,
+    origen: `Visor · ${entrada.nota}`,
+    fuente: { tipo: 'municipio', archivo: entrada.archivo },
+  }
+}
+
+/** Una sola capa del municipio, por su nombre de archivo. */
+export async function traerPorArchivo(archivo: string): Promise<Capa | null> {
+  const entrada = CAPAS_MUNICIPIO.find((c) => c.archivo === archivo)
+  return entrada ? traerDelVisor(entrada) : null
 }
 
 /** Trae varias, y dice cuáles fallaron en vez de rendirse con la primera. */
