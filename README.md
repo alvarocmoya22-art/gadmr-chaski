@@ -244,6 +244,33 @@ pestañas del panel; cuando la aplicación se una con el visor en los tres modos
 guarda como texto libre y no como una lista cerrada que habría que migrar
 después.
 
+## Capas desde una base de datos
+
+Un navegador no puede hablar con PostgreSQL: Postgres tiene su propio protocolo
+sobre TCP y el navegador solo sabe HTTP. Entre la base y CHASKI hace falta algo
+que publique las tablas por HTTP, y lo que encaja es un servicio **OGC API
+Features** —[`pg_featureserv`](https://github.com/CrunchyData/pg_featureserv)
+es un solo ejecutable de solo lectura que lo hace— porque devuelve GeoJSON, que
+es lo que esta aplicación ya sabe leer.
+
+Se escribe la dirección del servicio, se miran sus tablas y se traen las que
+hagan falta. A partir de ahí son capas como cualquier otra. La base nunca queda
+expuesta al navegador: solo se ve lo que alguien haya decidido publicar, y solo
+para leer.
+
+**La versión publicada en internet no podrá ver una base interna.** Una página
+servida por `https` no puede llamar a un `http://` de la red local: el navegador
+lo bloquea. Eso no es un estorbo, es la garantía de que los datos
+institucionales no salen a internet por este camino. Para leer la base, CHASKI
+se abre dentro de la red del municipio.
+
+Comprobado contra un servicio OGC API Features real y público: se listan sus 17
+tablas, una colección de 25 polígonos llega entera, y otra que el servicio
+entrega de diez en diez se trae completa siguiendo 188 páginas —1.872 registros,
+el número exacto que tiene—. Los dos fallos frecuentes se explican en lenguaje
+de persona: el servicio apagado o fuera de la red, y la página segura llamando
+a un servicio inseguro.
+
 ## Lo que no está, y por qué
 
 De las 23 herramientas de GOAT faltan siete, todas por la misma razón: piden
@@ -263,9 +290,9 @@ del visor de territorio.
 
 ## Lo que falta
 
-- **PostGIS.** El siguiente paso es que estas mismas capas puedan venir de la
-  base institucional en lugar de un archivo. Las herramientas no cambian;
-  cambia de dónde salen los registros.
+- **Apuntar a la base del GADM.** El lado de CHASKI está hecho y probado; falta
+  levantar el servicio sobre el Postgres institucional y decidir qué tablas se
+  publican.
 - **Filtrar una capa a una capa nueva.** Hoy el filtro por campo y valor actúa
   dentro de cada herramienta, pero no deja una capa filtrada que se pueda usar
   como destino de otra.

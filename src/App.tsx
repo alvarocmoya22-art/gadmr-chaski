@@ -26,12 +26,19 @@ import PanelAnalisis from './components/PanelAnalisis'
 import PanelGuiado from './components/PanelGuiado'
 import PanelInforme, { INFORME_INICIAL, type AjustesInforme } from './components/PanelInforme'
 import PanelMirar from './components/PanelMirar'
+import PanelBase from './components/PanelBase'
 import Lamina from './components/Lamina'
 import { leerArchivo, type Capa } from './lib/cargar'
 import { cajaDeCapa, piezasDe, puntosDe, recuadroDe, type PuntoAnalisis } from './lib/ambito'
 import { HERRAMIENTAS, herramientasPara, type Herramienta } from './lib/herramientas'
 import { diagnosticar, type Informe } from './lib/diagnostico'
 import { CAPAS_MIRAR, ambitosDe, cargarPoblacion, leerAmbito } from './lib/mirar'
+import {
+  explicarFallo,
+  listarColecciones,
+  traerColeccion,
+  type Coleccion,
+} from './lib/ogc'
 import { ENTRADA, RECETAS } from './lib/recetas'
 import { FUENTE_EJEMPLO, cargarEjemplo, traerDelEjemplo } from './lib/ejemplo'
 import {
@@ -93,6 +100,14 @@ export default function App() {
   const [recados, setRecados] = useState<{ texto: string; mal: boolean }[]>([])
   const [modo, setModo] = useState<Modo>('mirar')
   const [subModo, setSubModo] = useState<SubModo>('preguntas')
+
+  // Base institucional
+  const [baseUrl, setBaseUrl] = useState('')
+  const [colecciones, setColecciones] = useState<Coleccion[]>([])
+  const [conectando, setConectando] = useState(false)
+  const [trayendo, setTrayendo] = useState<string | null>(null)
+  const [avanceBase, setAvanceBase] = useState<string | null>(null)
+  const [errorBase, setErrorBase] = useState<string | null>(null)
 
   // Modo Mirar
   const [ambitoElegido, setAmbitoElegido] = useState('urbano')
@@ -523,6 +538,52 @@ export default function App() {
     setRecados([{ texto: 'Mesa olvidada. Lo que hay en pantalla sigue aquí.', mal: false }])
   }, [])
 
+  /* ── Base institucional ─────────────────────────────────────────────── */
+
+  const conectarBase = useCallback(async () => {
+    setConectando(true)
+    setErrorBase(null)
+    setAvanceBase(null)
+    try {
+      const lista = await listarColecciones(baseUrl)
+      setColecciones(lista)
+      if (lista.length === 0) setErrorBase('El servicio respondió, pero no publica ninguna tabla.')
+    } catch (e) {
+      setColecciones([])
+      setErrorBase(explicarFallo(e, baseUrl))
+    }
+    setConectando(false)
+  }, [baseUrl])
+
+  const traerDeBase = useCallback(
+    async (c: Coleccion) => {
+      setTrayendo(c.id)
+      setErrorBase(null)
+      try {
+        const { capa: nueva, cortada, total } = await traerColeccion(baseUrl, c, (traidos, cuantos) =>
+          setAvanceBase(
+            `${c.titulo}: ${numero(traidos)}${cuantos ? ` de ${numero(cuantos)}` : ''} registros…`,
+          ),
+        )
+        recibir([nueva])
+        setAvanceBase(null)
+        setRecados([
+          {
+            texto: cortada
+              ? `${nueva.nombre}: se trajeron los primeros ${numero(nueva.geo.features.length)} de ${total ? numero(total) : 'muchos'} registros.`
+              : `${nueva.nombre}: ${numero(nueva.geo.features.length)} registros de la base.`,
+            mal: false,
+          },
+        ])
+      } catch (e) {
+        setAvanceBase(null)
+        setErrorBase(explicarFallo(e, baseUrl))
+      }
+      setTrayendo(null)
+    },
+    [baseUrl, recibir],
+  )
+
   /* ── Modo Mirar ─────────────────────────────────────────────────────── */
 
   const porNombre = useCallback(
@@ -725,6 +786,19 @@ export default function App() {
               }
               onQuitar={quitar}
               onEncuadrar={encuadrar}
+              base={
+                <PanelBase
+                  base={baseUrl}
+                  onBase={setBaseUrl}
+                  colecciones={colecciones}
+                  conectando={conectando}
+                  trayendo={trayendo}
+                  avance={avanceBase}
+                  error={errorBase}
+                  onConectar={() => void conectarBase()}
+                  onTraer={(c) => void traerDeBase(c)}
+                />
+              }
             />
 
             {mesaGuardada && !ofrecida && capas.length > 0 && (

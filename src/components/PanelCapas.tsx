@@ -9,6 +9,7 @@
  */
 import { useState } from 'react'
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from '../lib/municipio'
+import type { ReactNode } from 'react'
 import type { Capa } from '../lib/cargar'
 import { descargar } from '../lib/exportar'
 import { cifraLeyenda } from '../lib/medidas'
@@ -29,6 +30,8 @@ interface Props {
   onArchivos: (archivos: FileList | File[]) => void
   onEjemplo: () => void
   onMunicipio: (entradas: CapaMunicipal[]) => void
+  /** El panel de la base institucional, que vive fuera pero se enseña aquí. */
+  base?: ReactNode
   onVisible: (id: string) => void
   onQuitar: (id: string) => void
   onEncuadrar: (id: string) => void
@@ -51,6 +54,7 @@ export default function PanelCapas({
   onArchivos,
   onEjemplo,
   onMunicipio,
+  base,
   onVisible,
   onQuitar,
   onEncuadrar,
@@ -180,6 +184,8 @@ export default function PanelCapas({
           </div>
         )}
       </div>
+
+      {base}
 
       {capas.length === 0 ? (
         <div className="space-y-2">
