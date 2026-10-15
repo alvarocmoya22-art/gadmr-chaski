@@ -1,0 +1,613 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Sistema de diseño GADM Riobamba · tokens --gr-
+   Tema claro completo en :root; el tema oscuro solo redefine. */
+:root {
+  color-scheme: light;
+
+  --gr-azul-500: #0f4c81;
+  --gr-azul-700: #0a3860;
+  --gr-azul-100: #e4edf6;
+  --gr-rojo-500: #a8231c;
+
+  --gr-ok: #1b6046;
+  --gr-aviso: #7a5200;
+  --gr-error: #a8231c;
+  --gr-info: #0f4c81;
+
+  --gr-fondo: #eef1f4;
+  --gr-superficie: #ffffff;
+  --gr-tinta: #0f1922;
+  --gr-tinta-2: #3c4a57;
+  --gr-tinta-3: #66757f;
+  --gr-linea: #d3dbe2;
+  --gr-linea-fuerte: #b4c0ca;
+
+  --gr-s1: #2c74b0;
+  --gr-s2: #d1732b;
+  --gr-s3: #1f9070;
+  --gr-s4: #8a5ad6;
+  --gr-s5: #ce3d63;
+  --gr-s6: #0090ae;
+  --gr-s7: #7f8c14;
+  --gr-s8: #b0479c;
+  /* Series 9 a 12: solo las usa el inventario del GADM, que tiene doce usos
+     y las ocho primeras no alcanzan. Se eligen alejadas de las anteriores en
+     tono y en luminosidad, que es lo que permite separarlas de un vistazo. */
+  --gr-s9: #8a6d3b;
+  --gr-s10: #52708c;
+  --gr-s11: #a8443a;
+  --gr-s12: #3f7d6e;
+  --gr-s-otros: #8496a4;
+
+  /* Limite de barrio: color propio, fuera de las series tematicas, para que
+     un barrio nunca se lea como una categoria de dato.
+     NO cambia con el tema: el mapa base de OSM es siempre claro, asi que un
+     tono claro «para tema oscuro» se perderia justo sobre el. */
+  --gr-limite-barrio: #8e2f8a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --gr-azul-100: #17334d;
+    --gr-ok: #7dccaa;
+    --gr-aviso: #e8b75b;
+    --gr-error: #ff9a90;
+    --gr-info: #74b2e6;
+    --gr-fondo: #0b131b;
+    --gr-superficie: #131e28;
+    --gr-tinta: #e7eef4;
+    --gr-tinta-2: #b3c1cd;
+    --gr-tinta-3: #8496a4;
+    --gr-linea: #2a3945;
+    --gr-linea-fuerte: #3b4c5a;
+    --gr-s1: #4e95d2;
+    --gr-s2: #d07b33;
+    --gr-s3: #35a67f;
+    --gr-s4: #9e77dc;
+    --gr-s5: #dc5a78;
+    --gr-s6: #1fa5c2;
+    --gr-s7: #8e9d22;
+    --gr-s8: #c25cae;
+    --gr-s9: #b08c52;
+    --gr-s10: #7b98b5;
+    --gr-s11: #d06a5e;
+    --gr-s12: #56a091;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --gr-azul-100: #17334d;
+  --gr-ok: #7dccaa;
+  --gr-aviso: #e8b75b;
+  --gr-error: #ff9a90;
+  --gr-info: #74b2e6;
+  --gr-fondo: #0b131b;
+  --gr-superficie: #131e28;
+  --gr-tinta: #e7eef4;
+  --gr-tinta-2: #b3c1cd;
+  --gr-tinta-3: #8496a4;
+  --gr-linea: #2a3945;
+  --gr-linea-fuerte: #3b4c5a;
+  --gr-s1: #4e95d2;
+  --gr-s2: #d07b33;
+  --gr-s3: #35a67f;
+  --gr-s4: #9e77dc;
+  --gr-s5: #dc5a78;
+  --gr-s6: #1fa5c2;
+  --gr-s7: #8e9d22;
+  --gr-s8: #c25cae;
+  --gr-s9: #b08c52;
+  --gr-s10: #7b98b5;
+  --gr-s11: #d06a5e;
+  --gr-s12: #56a091;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+@media (min-width: 1024px) {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--gr-fondo);
+  color: var(--gr-tinta);
+  font-family: Archivo, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Foco: anillo 3 px azul, desplazado 2 px */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--gr-azul-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .gr-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gr-tinta-3);
+  }
+  .gr-eyebrow::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--gr-linea);
+  }
+
+  .gr-kpi {
+    background: var(--gr-superficie);
+    border: 1px solid var(--gr-linea);
+    border-radius: 4px;
+    padding: 0.75rem 0.875rem;
+  }
+  .gr-kpi__valor {
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    font-size: 1.5rem;
+    line-height: 1.1;
+    color: var(--gr-tinta);
+  }
+  .gr-kpi__rotulo {
+    font-size: 0.75rem;
+    color: var(--gr-tinta-2);
+    margin-top: 0.25rem;
+  }
+  .gr-kpi__pie {
+    font-size: 0.6875rem;
+    color: var(--gr-tinta-3);
+    margin-top: 0.125rem;
+  }
+
+  .gr-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .gr-chip--ok { color: var(--gr-ok); }
+  .gr-chip--aviso { color: var(--gr-aviso); }
+  .gr-chip--error { color: var(--gr-error); }
+  .gr-chip--info { color: var(--gr-info); }
+  .gr-chip--neutro { color: var(--gr-tinta-3); }
+
+  .gr-nota {
+    border-left: 3px solid var(--gr-info);
+    background: var(--gr-superficie);
+    padding: 0.625rem 0.75rem;
+    font-family: 'IBM Plex Serif', Georgia, serif;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--gr-tinta-2);
+    border-radius: 0 4px 4px 0;
+  }
+  .gr-nota--aviso { border-left-color: var(--gr-aviso); }
+  .gr-nota--alerta { border-left-color: var(--gr-error); }
+
+  /*
+   * Novedad publicada. Va en verde y mas grande que el resto de notas a
+   * proposito: no es un problema del que avisar, es algo que hay que pulsar, y
+   * compite con una nota ambar (la base de OSM atrasada) que puede estar
+   * justo al lado. Mismo color, mismo tamano, y ninguna de las dos se ve.
+   */
+  .gr-nota--novedad {
+    border-left-width: 5px;
+    border-left-color: var(--gr-ok);
+    background: color-mix(in srgb, var(--gr-ok) 12%, var(--gr-superficie));
+    padding: 0.875rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--gr-tinta);
+  }
+
+  .gr-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .gr-tabla th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--gr-tinta-3);
+    border-bottom: 1px solid var(--gr-linea-fuerte);
+    padding: 0.4rem 0.6rem;
+    position: sticky;
+    top: 0;
+    background: var(--gr-superficie);
+    z-index: 1;
+  }
+  .gr-tabla td {
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--gr-linea);
+    color: var(--gr-tinta-2);
+    vertical-align: top;
+  }
+  .gr-tabla tbody tr:hover td { background: var(--gr-azul-100); }
+  .gr-num {
+    font-family: 'IBM Plex Mono', Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gr-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 32px;
+    padding: 0.3rem 0.7rem;
+    border-radius: 4px;
+    border: 1px solid var(--gr-azul-500);
+    background: var(--gr-azul-500);
+    color: #fff;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  /* --gr-info sigue al tema; --gr-azul-500 no, y en oscuro no contrastaria. */
+  .gr-btn--secundario {
+    background: transparent;
+    color: var(--gr-info);
+    border-color: currentColor;
+  }
+
+  .gr-ficha dt {
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--gr-tinta-3);
+  }
+  .gr-ficha dd {
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--gr-tinta);
+  }
+}
+
+/* Rotulo de plataforma: marcador HTML, no una capa de simbolos del mapa */
+.gr-rotulo-plataforma {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 11px;
+  border: 1px solid var(--gr-azul-500);
+  background: var(--gr-superficie);
+  color: var(--gr-azul-500);
+  font-family: Archivo, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgb(15 25 34 / 30%);
+  pointer-events: auto;
+  cursor: default;
+}
+:root[data-theme='dark'] .gr-rotulo-plataforma {
+  border-color: var(--gr-info);
+  color: var(--gr-info);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gr-rotulo-plataforma {
+    border-color: var(--gr-info);
+    color: var(--gr-info);
+  }
+}
+
+/* Rotulo de la plataforma elegida: invertido, para que se lea a distancia */
+.gr-rotulo-plataforma--activa {
+  background: var(--gr-azul-500);
+  color: #fff;
+  border-color: var(--gr-azul-700);
+  min-width: 26px;
+  height: 26px;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgb(15 25 34 / 45%);
+}
+:root[data-theme='dark'] .gr-rotulo-plataforma--activa {
+  background: var(--gr-info);
+  color: #0b131b;
+  border-color: var(--gr-info);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .gr-rotulo-plataforma--activa {
+    background: var(--gr-info);
+    color: #0b131b;
+    border-color: var(--gr-info);
+  }
+}
+
+/* Marca de la foto que se ve en el panel: punto mas cono de vision */
+.gr-marca-foto {
+  position: relative;
+  width: 0;
+  height: 0;
+  pointer-events: auto;
+  cursor: help;
+}
+.gr-marca-foto__punto {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #7f8c14;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgb(15 25 34 / 45%);
+}
+/* El cono apunta al norte y se rota con el rumbo de la camara */
+.gr-marca-foto__cono {
+  position: absolute;
+  left: -13px;
+  top: -34px;
+  width: 26px;
+  height: 30px;
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, #7f8c14 70%, transparent),
+    color-mix(in srgb, #7f8c14 5%, transparent)
+  );
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gr-marca-foto__punto {
+    transition: transform 0.15s ease-out;
+  }
+}
+
+/* Marca de la calle buscada: chincheta sobre su punto medio */
+.gr-marca-calle {
+  position: relative;
+  width: 0;
+  height: 0;
+  cursor: help;
+}
+.gr-marca-calle::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--gr-limite-barrio);
+  border: 3px solid #fff;
+  box-shadow: 0 1px 5px rgb(15 25 34 / 45%);
+}
+/* Anillo que late una vez al aparecer, para que se encuentre de un vistazo */
+.gr-marca-calle::after {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--gr-limite-barrio);
+  animation: gr-latido 1.6s ease-out 2;
+}
+@keyframes gr-latido {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gr-marca-calle::after { animation: none; }
+}
+
+/* MapLibre: alinear controles y popup con los tokens */
+.maplibregl-popup-content {
+  background: var(--gr-superficie);
+  color: var(--gr-tinta);
+  border: 1px solid var(--gr-linea-fuerte);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-family: Archivo, 'Segoe UI', system-ui, sans-serif;
+  box-shadow: 0 6px 20px rgb(15 25 34 / 18%);
+}
+.maplibregl-popup-tip { border-top-color: var(--gr-superficie); }
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+  background: color-mix(in srgb, var(--gr-superficie) 88%, transparent) !important;
+  color: var(--gr-tinta-2);
+}
+.maplibregl-ctrl-attrib a { color: var(--gr-azul-500); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ── Ficha del registro, en el globo de MapLibre.
+   El globo se construye con HTML suelto, fuera de React, así que sus clases
+   no las ve Tailwind y tienen que estar escritas aquí. */
+.maplibregl-popup-content {
+  background: var(--gr-superficie);
+  color: var(--gr-tinta);
+  border: 1px solid var(--gr-linea);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--gr-superficie); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--gr-superficie); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--gr-superficie); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--gr-superficie); }
+
+.ficha { font: 12px/1.45 system-ui, sans-serif; }
+.ficha-t { font-weight: 700; margin-bottom: 4px; }
+.ficha-k {
+  text-align: left;
+  padding: 1px 8px 1px 0;
+  font-weight: 600;
+  color: var(--gr-tinta-3);
+  white-space: nowrap;
+  vertical-align: top;
+}
+.ficha-v { padding: 1px 0; }
+
+/* ── La lámina imprimible.
+   Colores escritos a mano y no tokens: la hoja sale igual con el tema claro
+   que con el oscuro, porque el papel siempre es blanco. */
+.lamina-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  background: #26323c;
+  padding: 16px;
+}
+.lamina-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 1120px;
+  margin: 0 auto 12px;
+}
+.lamina-boton {
+  border-radius: 4px;
+  background: #0f4c81;
+  color: #fff;
+  font: 600 13px/1 system-ui, sans-serif;
+  padding: 9px 14px;
+}
+.lamina-boton-suave { background: #46586a; }
+.lamina-pista { color: #c6d2dc; font: 12px/1.4 system-ui, sans-serif; }
+
+.lamina {
+  max-width: 1120px;
+  margin: 0 auto;
+  background: #fff;
+  color: #1b2a38;
+  font: 12px/1.45 system-ui, sans-serif;
+  padding: 14mm;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.lamina-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 2px solid #0f4c81;
+  padding-bottom: 8px;
+}
+.lamina-cabecera h1 { font-size: 19px; font-weight: 700; color: #0f4c81; }
+.lamina-cabecera p { font-size: 12.5px; color: #4a5a68; margin-top: 2px; }
+.lamina-sello { text-align: right; font-size: 10.5px; color: #4a5a68; }
+.lamina-sello strong { display: block; font-size: 12px; color: #1b2a38; }
+.lamina-sello span { display: block; }
+
+.lamina-cuerpo {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+.lamina-mapa img {
+  width: 100%;
+  border: 1px solid #c3ced8;
+  display: block;
+}
+.lamina-sin-mapa {
+  border: 1px dashed #c3ced8;
+  padding: 18px;
+  color: #7a8793;
+  font-size: 11.5px;
+}
+.lamina-pie-mapa {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 5px;
+}
+.lamina-escala { display: flex; align-items: center; gap: 6px; font-size: 10.5px; }
+.lamina-escala-barra {
+  display: inline-block;
+  height: 7px;
+  border: 1px solid #1b2a38;
+  border-top: none;
+}
+.lamina-norte { display: flex; flex-direction: column; align-items: center; font: 700 10px/1 system-ui; }
+
+.lamina-leyenda { margin-top: 8px; font-size: 10.5px; }
+.lamina-leyenda strong { display: block; margin-bottom: 3px; }
+.lamina-leyenda ul { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.lamina-leyenda li { display: flex; align-items: center; gap: 5px; }
+.lamina-leyenda li span { width: 15px; height: 9px; border: 1px solid rgba(0, 0, 0, 0.15); }
+
+.lamina-bloque { break-inside: avoid; margin-bottom: 9px; }
+.lamina-bloque h2 {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f4c81;
+  border-bottom: 1px solid #dbe3ea;
+  padding-bottom: 2px;
+  margin-bottom: 3px;
+}
+.lamina-bloque table { width: 100%; }
+.lamina-bloque th {
+  text-align: left;
+  font-weight: 400;
+  color: #4a5a68;
+  padding: 1px 8px 1px 0;
+  vertical-align: top;
+}
+.lamina-bloque td { text-align: right; font-weight: 600; padding: 1px 0; white-space: nowrap; }
+.lamina-lectura { font-size: 10.5px; color: #4a5a68; margin-top: 3px; }
+
+.lamina-avisos {
+  margin-top: 8px;
+  border: 1px solid #b07a00;
+  background: #fdf6e6;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: #6b4a00;
+}
+.lamina-pie {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-top: 1px solid #dbe3ea;
+  margin-top: 10px;
+  padding-top: 5px;
+  font-size: 9.5px;
+  color: #7a8793;
+}
+
+@media print {
+  @page { size: A4 landscape; margin: 8mm; }
+  /* Fuera todo lo que no es la hoja, incluida su propia barra de botones. */
+  .app-principal,
+  .lamina-barra { display: none !important; }
+  .lamina-fondo { position: static; padding: 0; background: #fff; overflow: visible; }
+  .lamina { max-width: none; box-shadow: none; padding: 0; }
+  .lamina-cuerpo { grid-template-columns: 1.3fr 1fr; }
+}
