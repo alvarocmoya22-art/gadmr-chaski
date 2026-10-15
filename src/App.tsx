@@ -25,14 +25,22 @@ import PanelCapas from './components/PanelCapas'
 import PanelAnalisis from './components/PanelAnalisis'
 import PanelGuiado from './components/PanelGuiado'
 import PanelInforme, { INFORME_INICIAL, type AjustesInforme } from './components/PanelInforme'
+import PanelMirar from './components/PanelMirar'
 import Lamina from './components/Lamina'
 import { leerArchivo, type Capa } from './lib/cargar'
 import { cajaDeCapa, piezasDe, puntosDe, recuadroDe, type PuntoAnalisis } from './lib/ambito'
 import { HERRAMIENTAS, herramientasPara, type Herramienta } from './lib/herramientas'
 import { diagnosticar, type Informe } from './lib/diagnostico'
+import { CAPAS_MIRAR, ambitosDe, cargarPoblacion, leerAmbito } from './lib/mirar'
 import { ENTRADA, RECETAS } from './lib/recetas'
 import { FUENTE_EJEMPLO, cargarEjemplo, traerDelEjemplo } from './lib/ejemplo'
-import { FUENTE_MUNICIPIO, traerPorArchivo, traerVarias, type CapaMunicipal } from './lib/municipio'
+import {
+  CAPAS_MUNICIPIO,
+  FUENTE_MUNICIPIO,
+  traerPorArchivo,
+  traerVarias,
+  type CapaMunicipal,
+} from './lib/municipio'
 import {
   MESA_ACTUAL,
   cuandoLegible,
@@ -54,13 +62,42 @@ interface Ultimo {
   capaId: string
 }
 
-type Modo = 'guiado' | 'herramientas' | 'informe'
+/**
+ * Las tres puertas a lo mismo.
+ *
+ * **Mirar** es el territorio de casa, sin una sola herramienta a la vista.
+ * **Analizar** es traer lo tuyo y cruzarlo. **Contar** es el informe y la
+ * lámina. Un solo mapa y una sola lista de capas debajo de las tres: cambiar
+ * de modo no pierde nada de lo que haya en pantalla.
+ */
+type Modo = 'mirar' | 'analizar' | 'contar'
+
+/** Dentro de Analizar, por dónde se entra. */
+type SubModo = 'preguntas' | 'herramientas'
+
+/**
+ * Los modos de antes, cuando el panel tenía tres pestañas y no había modos.
+ *
+ * Una mesa guardada con el nombre viejo se recupera igual: convertirla cuesta
+ * tres líneas y tirarla costaría el trabajo de quien la guardó.
+ */
+const MODOS_VIEJOS: Record<string, Modo> = {
+  guiado: 'analizar',
+  herramientas: 'analizar',
+  informe: 'contar',
+}
 
 export default function App() {
   const [capas, setCapas] = useState<Capa[]>([])
   const [cargando, setCargando] = useState(false)
   const [recados, setRecados] = useState<{ texto: string; mal: boolean }[]>([])
-  const [modo, setModo] = useState<Modo>('guiado')
+  const [modo, setModo] = useState<Modo>('mirar')
+  const [subModo, setSubModo] = useState<SubModo>('preguntas')
+
+  // Modo Mirar
+  const [ambitoElegido, setAmbitoElegido] = useState('urbano')
+  const [fuentePoblacion, setFuentePoblacion] = useState<string | null>(null)
+  const [poblacion, setPoblacion] = useState<Awaited<ReturnType<typeof cargarPoblacion>>>(null)
 
   // Modo guiado
   const [recetaClave, setRecetaClave] = useState<string | null>(null)
@@ -443,8 +480,9 @@ export default function App() {
     const { capas: suyas, fallos } = await reconstruir(ofrecida, traerDeCatalogo)
     setCapas(suyas)
     setMapaBase(ofrecida.mapaBase)
-    if (['guiado', 'herramientas', 'informe'].includes(ofrecida.modo)) {
-      setModo(ofrecida.modo as Modo)
+    const guardado = MODOS_VIEJOS[ofrecida.modo] ?? ofrecida.modo
+    if (guardado === 'mirar' || guardado === 'analizar' || guardado === 'contar') {
+      setModo(guardado)
     }
     const caja = suyas[0] ? cajaDeCapa(suyas[0]) : null
     if (caja) setEncuadre(caja)
@@ -485,9 +523,86 @@ export default function App() {
     setRecados([{ texto: 'Mesa olvidada. Lo que hay en pantalla sigue aquí.', mal: false }])
   }, [])
 
+  /* ── Modo Mirar ─────────────────────────────────────────────────────── */
+
+  const porNombre = useCallback(
+    (nombre: string) => capas.find((c) => c.nombre === nombre && !c.derivada) ?? null,
+    [capas],
+  )
+  const capasMirar = useMemo(
+    () => ({
+      plataformas: porNombre('Plataformas'),
+      barrios: porNombre('Barrios'),
+      equipamientos: porNombre('Equipamientos'),
+    }),
+    [porNombre],
+  )
+  const mirarListo = Boolean(capasMirar.plataformas && capasMirar.barrios)
+
+  useEffect(() => {
+    if (modo !== 'mirar' || poblacion) return
+    void cargarPoblacion().then((p) => {
+      if (!p) return
+      setPoblacion(p)
+      setFuentePoblacion(p.fuente)
+    })
+  }, [modo, poblacion])
+
+  const ambitos = useMemo(
+    () => ambitosDe(capasMirar.plataformas, capasMirar.barrios, poblacion),
+    [capasMirar.plataformas, capasMirar.barrios, poblacion],
+  )
+  const ambito = useMemo(
+    () => ambitos.find((a) => a.clave === ambitoElegido) ?? ambitos[0] ?? null,
+    [ambitos, ambitoElegido],
+  )
+  const lectura = useMemo(
+    () =>
+      ambito
+        ? leerAmbito(ambito, capasMirar.equipamientos, capasMirar.barrios)
+        : { cifras: [], tipos: [] },
+    [ambito, capasMirar.equipamientos, capasMirar.barrios],
+  )
+
+  /** Trae de una vez las capas que el modo Mirar necesita. */
+  const traerTerritorio = useCallback(async () => {
+    const faltan = CAPAS_MIRAR.filter((c) => !porNombre(c.nombre)).map((c) => c.archivo)
+    const entradas = CAPAS_MUNICIPIO.filter((c) => faltan.includes(c.archivo))
+    if (entradas.length === 0) return
+    setCargando(true)
+    const { capas: nuevas, fallos } = await traerVarias(entradas)
+    recibir(nuevas)
+    setRecados(fallos.map((f) => ({ texto: f, mal: true })))
+    setCargando(false)
+  }, [porNombre, recibir])
+
+  /** Al elegir una zona, el mapa va a ella y la dibuja punteada. */
+  const elegirAmbito = useCallback(
+    (clave: string) => {
+      setAmbitoElegido(clave)
+      const a = ambitos.find((x) => x.clave === clave)
+      if (!a) return
+      setEncuadre([...a.caja] as [number, number, number, number])
+      setUltimo({
+        puntos: [],
+        capaId: '',
+        ambito: {
+          type: 'FeatureCollection',
+          features: a.piezas.map((p) => ({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: p as number[][][] },
+            properties: {},
+          })),
+        },
+      })
+    },
+    [ambitos],
+  )
+
   const puntos = useMemo(() => ultimo?.puntos ?? [], [ultimo])
 
-  const pestania = (clave: Modo, rotulo: string, nota: string) => (
+  /** Una de las tres puertas, en la cabecera. */
+  const puerta = (clave: Modo, rotulo: string, nota: string) => (
     <button
       type="button"
       onClick={() => {
@@ -495,8 +610,26 @@ export default function App() {
         setError(null)
       }}
       title={nota}
-      className={`flex-1 rounded px-2 py-1.5 text-sm ${
+      className={`rounded px-3 py-1 text-sm ${
         modo === clave
+          ? 'bg-[var(--gr-azul-500)] font-semibold text-white'
+          : 'text-[var(--gr-tinta-2)] hover:bg-[var(--gr-azul-100)]'
+      }`}
+    >
+      {rotulo}
+    </button>
+  )
+
+  /** Por dónde se entra dentro de Analizar. */
+  const sub = (clave: SubModo, rotulo: string) => (
+    <button
+      type="button"
+      onClick={() => {
+        setSubModo(clave)
+        setError(null)
+      }}
+      className={`flex-1 rounded px-2 py-1.5 text-sm ${
+        subModo === clave
           ? 'bg-[var(--gr-azul-500)] font-semibold text-white'
           : 'text-[var(--gr-tinta-2)] hover:bg-[var(--gr-azul-100)]'
       }`}
@@ -520,9 +653,21 @@ export default function App() {
           <span className="rounded border border-[var(--gr-aviso)] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[var(--gr-aviso)]">
             Prototipo
           </span>
-          <p className="text-xs text-[var(--gr-tinta-3)]">
-            Carga tus capas y analízalas · GADM Riobamba
+          <p className="hidden text-xs text-[var(--gr-tinta-3)] lg:block">
+            Territorio de Riobamba · GADM Riobamba
           </p>
+          {/*
+            Las tres puertas van arriba, no dentro del panel.
+
+            Ahí es donde se ve que la aplicación es una sola: el mapa y la
+            lista de capas son los mismos en los tres modos, y cambiar de modo
+            no pierde nada de lo que haya en pantalla.
+          */}
+          <nav className="ml-auto flex gap-1 rounded-md border border-[var(--gr-linea)] p-0.5">
+            {puerta('mirar', 'Mirar', 'El territorio de casa, sin herramientas')}
+            {puerta('analizar', 'Analizar', 'Trae lo tuyo y crúzalo')}
+            {puerta('contar', 'Contar', 'El informe y la lámina')}
+          </nav>
         </header>
 
         <div className="flex min-h-0 flex-1">
@@ -617,39 +762,55 @@ export default function App() {
             )}
 
             <div className="border-t border-[var(--gr-linea)] pt-3">
-              <div className="mb-2 flex gap-1 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1">
-                {pestania('guiado', 'Preguntas', 'Elige una pregunta y completa la frase')}
-                {pestania('herramientas', 'Herramientas', 'La caja entera, por categorías')}
-                {pestania('informe', 'Informe', 'El diagnóstico completo, listo para imprimir')}
-              </div>
+              {modo === 'mirar' && (
+                <PanelMirar
+                  listo={mirarListo}
+                  cargando={cargando}
+                  onTraerCapas={() => void traerTerritorio()}
+                  ambitos={ambitos}
+                  elegido={ambito?.clave ?? 'urbano'}
+                  onElegir={elegirAmbito}
+                  cifras={lectura.cifras}
+                  tipos={lectura.tipos}
+                  fuentePoblacion={fuentePoblacion}
+                />
+              )}
 
-              {modo === 'guiado' && (
-                <PanelGuiado
-                  capas={capas}
-                  receta={receta}
-                  onReceta={elegirReceta}
-                  valores={valoresGuiado}
-                  onValores={setValoresGuiado}
-                  calculando={calculando}
-                  onCorrer={correrReceta}
-                  error={error}
-                />
+              {modo === 'analizar' && (
+                <>
+                  <div className="mb-2 flex gap-1 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1">
+                    {sub('preguntas', 'Preguntas')}
+                    {sub('herramientas', 'Herramientas')}
+                  </div>
+                  {subModo === 'preguntas' ? (
+                    <PanelGuiado
+                      capas={capas}
+                      receta={receta}
+                      onReceta={elegirReceta}
+                      valores={valoresGuiado}
+                      onValores={setValoresGuiado}
+                      calculando={calculando}
+                      onCorrer={correrReceta}
+                      error={error}
+                    />
+                  ) : (
+                    <PanelAnalisis
+                      capas={capas}
+                      capa={capa}
+                      onCapa={elegirCapa}
+                      herramienta={herramienta}
+                      onHerramienta={elegirHerramienta}
+                      valores={valores}
+                      onValores={setValores}
+                      calculando={calculando}
+                      onCorrer={correrHerramienta}
+                      error={error}
+                    />
+                  )}
+                </>
               )}
-              {modo === 'herramientas' && (
-                <PanelAnalisis
-                  capas={capas}
-                  capa={capa}
-                  onCapa={elegirCapa}
-                  herramienta={herramienta}
-                  onHerramienta={elegirHerramienta}
-                  valores={valores}
-                  onValores={setValores}
-                  calculando={calculando}
-                  onCorrer={correrHerramienta}
-                  error={error}
-                />
-              )}
-              {modo === 'informe' && (
+
+              {modo === 'contar' && (
                 <>
                   <PanelInforme
                     capas={capas}

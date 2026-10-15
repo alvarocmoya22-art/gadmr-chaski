@@ -27,29 +27,43 @@ CHASKI es la otra mitad, y es la idea que se toma de
 que se arma el proceso, en vez de un análisis fijo al que hay que llevarle los
 datos ya preparados.
 
-## Dos puertas a lo mismo
+## Tres puertas a lo mismo
 
-**Preguntas.** Se elige una pregunta en lenguaje normal —«¿cuántos hay en cada
-zona?»— y se completa una frase con huecos: *Contar los registros de ___ que
-caen en cada ___*. La frase es la interfaz: quien la rellena está leyendo lo
-que va a pasar mientras lo elige, así que no hace falta saber cuál es la capa
-de entrada y cuál la de zonas.
+Un solo mapa y una sola lista de capas debajo de las tres. Cambiar de modo no
+pierde nada de lo que haya en pantalla.
 
-Esto es lo que GOAT no tiene, y es la diferencia que importa para una
-municipalidad. Su caja está escrita para quien ya sabe SIG: hay que saber que
-lo que uno quiere se llama *Aggregate Points* y que los barrios van en el hueco
-de las zonas y no al revés.
+**Mirar.** El territorio de casa: se elige el urbano, una plataforma o un
+barrio y se ve qué hay dentro —superficie medida, habitantes del Censo 2022,
+densidad, viviendas, equipamientos y cuántos hay por cada mil habitantes—.
+Aquí no se ve ni una herramienta, y es a propósito: quien entra a mirar su
+ciudad no debería tropezarse con la palabra «Getis-Ord».
 
-**Herramientas.** La caja entera, con la estructura de GOAT. Por debajo corre
-exactamente lo mismo: una pregunta no es un análisis aparte, es la misma
-herramienta con los huecos ya puestos en su sitio.
+**Analizar.** Suelta lo tuyo y crúzalo con lo de casa. Las preguntas primero,
+la caja entera para quien la quiera.
 
-Las once preguntas de hoy: cuántos hay en cada zona · qué tan lejos queda lo
+**Contar.** El diagnóstico escrito y la lámina para imprimir.
+
+Lo que de verdad las une no es la barra de arriba: es que **la lista de capas
+es una sola**. Lo del municipio y lo tuyo conviven sin jerarquía, y el
+resultado de una herramienta es una capa más.
+
+### El modo Preguntas
+
+Se elige una pregunta en lenguaje normal —«¿cuántos hay en cada zona?»— y se
+completa una frase con huecos: *Contar los registros de ___ que caen en cada
+___*. La frase es la interfaz: quien la rellena está leyendo lo que va a pasar
+mientras lo elige.
+
+Esto es lo que GOAT no tiene. Su caja está escrita para quien ya sabe SIG: hay
+que saber que lo que uno quiere se llama *Aggregate Points* y que los barrios
+van en el hueco de las zonas y no al revés.
+
+Las doce preguntas de hoy: cuántos hay en cada zona · qué tan lejos queda lo
 que la gente necesita · qué sectores quedan desatendidos · dónde se amontonan ·
 qué área cubre un radio · cuánta superficie hay en cada zona · cuántos
-kilómetros de vía hay en cada zona · cuánto hay de cada clase · cómo reparto
-esto en sectores de trabajo · qué parte de esta capa cae dentro de aquella · de
-qué zona es cada registro.
+kilómetros de vía hay en cada zona · cuánto hay de cada clase · cómo avanzó mes
+a mes · cómo reparto esto en sectores de trabajo · qué parte de esta capa cae
+dentro de aquella · de qué zona es cada registro.
 
 ## Probarlo sin buscar un archivo
 
