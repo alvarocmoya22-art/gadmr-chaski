@@ -17,7 +17,9 @@ import { ESTADISTICOS, aNumero, kMedias, necesitaCampo, resumir, type Estadistic
 import { CELDAS_HOTSPOT, TODA_LA_CATEGORIA, calcularHotspot } from '../hotspot'
 import { piezasDe, puntosDe, recuadroDe } from '../ambito'
 import { planoLocal } from '../metrico'
+import { RAMPA_GRADUADA } from '../medidas'
 import { numero, porcentaje } from '../format'
+import { PASOS, comoSeLeyo, leerFecha, periodoDe, type Paso } from '../tiempo'
 import {
   CATEGORIA,
   FILTRO,
@@ -52,7 +54,149 @@ const AGREGACION = [
   },
 ]
 
+/**
+ * El color que le toca al periodo número `i` de `total`.
+ *
+ * Interpola la rampa del sistema para que el tiempo se lea de claro a oscuro
+ * sin tener que escribir una paleta por cada número de periodos posible.
+ */
+function colorDePeriodo(i: number, total: number): string {
+  const paso = total <= 1 ? 0 : (i / (total - 1)) * (RAMPA_GRADUADA.length - 1)
+  const bajo = Math.floor(paso)
+  const alto = Math.min(bajo + 1, RAMPA_GRADUADA.length - 1)
+  const f = paso - bajo
+  const leer = (hex: string) => [1, 3, 5].map((k) => Number.parseInt(hex.slice(k, k + 2), 16))
+  const a = leer(RAMPA_GRADUADA[bajo])
+  const b = leer(RAMPA_GRADUADA[alto])
+  const mezcla = a.map((x, k) => Math.round(x + (b[k] - x) * f))
+  return `#${mezcla.map((x) => x.toString(16).padStart(2, '0')).join('')}`
+}
+
 export const GEOANALISIS: Herramienta[] = [
+  {
+    clave: 'avance-tiempo',
+    categoria: 'geoanalisis',
+    nombre: 'Avance en el tiempo',
+    nota: 'Cómo fue avanzando mes a mes: cuántos registros en cada periodo y dónde cayeron. Solo aparece si la capa trae una columna de fechas.',
+    acepta: ['punto', 'linea', 'poligono', 'mixta'],
+    avisoRepresentante: true,
+    parametros: [
+      {
+        tipo: 'campo',
+        clave: 'campoFecha',
+        rotulo: 'La fecha está en',
+        fecha: true,
+        nota: 'Solo se ofrecen las columnas que de verdad traen fechas.',
+      },
+      {
+        tipo: 'opcion',
+        clave: 'paso',
+        rotulo: 'Agrupar por',
+        defecto: 'mes',
+        opciones: PASOS.map((p) => ({ valor: p.clave, rotulo: p.rotulo })),
+      },
+      ...FILTRO,
+    ],
+    correr(ctx) {
+      const campoFecha = ctx.valores.campoFecha
+      if (!campoFecha) return { error: 'Elige la columna que trae la fecha.' }
+      const info = (ctx.capa.fechas ?? []).find((f) => f.campo === campoFecha)
+      if (!info) return { error: `«${campoFecha}» no trae fechas que se puedan leer.` }
+
+      const paso = (ctx.valores.paso || 'mes') as Paso
+      const elegidos = registrosDe(ctx)
+      if (elegidos.length === 0) return { error: 'Con este filtro no entra ningún registro.' }
+
+      const porPeriodo = new Map<number, { rotulo: string; n: number }>()
+      const rasgos: GeoJSON.Feature[] = []
+      let sinFecha = 0
+      for (const p of elegidos) {
+        const d = leerFecha(p.props[campoFecha], info.orden)
+        if (!d) {
+          sinFecha++
+          continue
+        }
+        const periodo = periodoDe(d, paso)
+        const ya = porPeriodo.get(periodo.n) ?? { rotulo: periodo.rotulo, n: 0 }
+        ya.n += 1
+        porPeriodo.set(periodo.n, ya)
+        rasgos.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+          properties: conCalculados(p.props, {
+            periodo: periodo.rotulo,
+            periodo_n: periodo.n,
+            fecha_iso: d.toISOString().slice(0, 10),
+          }),
+        })
+      }
+      if (rasgos.length === 0) return { error: 'Ningún registro trae una fecha legible.' }
+
+      const orden = [...porPeriodo.entries()].sort((a, b) => a[0] - b[0])
+      /*
+       * La columna acumulada es la que de verdad se mira en una campaña: el
+       * total del mes dice cuánto se hizo, pero el acumulado dice si se va a
+       * llegar. Las dos juntas en una sola fila.
+       */
+      let acumulado = 0
+      const resumen: Fila[] = orden.map(([, v]) => {
+        acumulado += v.n
+        return {
+          etiqueta: v.rotulo,
+          valor: `${numero(v.n)} · acumulado ${numero(acumulado)}`,
+        }
+      })
+      const mayor = orden.reduce((mejor, x) => (x[1].n > mejor[1].n ? x : mejor), orden[0])
+      resumen.unshift({
+        etiqueta: 'Periodos con registros',
+        valor: `${numero(orden.length)} · el mayor, ${mayor[1].rotulo} con ${numero(mayor[1].n)}`,
+      })
+      if (sinFecha > 0) {
+        resumen.push({ etiqueta: 'Sin fecha legible', valor: numero(sinFecha) })
+      }
+
+      const { nombre, origen } = tituloDe(ctx, 'Avance')
+      return {
+        capa: capaDerivada(nombre, `${origen}, por «${campoFecha}»`, {
+          type: 'FeatureCollection',
+          features: rasgos,
+        }, {
+          /*
+           * Un color por periodo, con su nombre en la leyenda.
+           *
+           * Los periodos son categorías ordenadas, no una escala continua: la
+           * leyenda tiene que decir «Marzo 2026» y no «de 202.601 a 202.603».
+           * Con muchos periodos —días de medio año— la lista no cabe, y ahí sí
+           * se usa la escala.
+           */
+          tema:
+            orden.length <= 12
+              ? {
+                  campo: 'periodo_n',
+                  unidad: 'periodo',
+                  coincidencias: orden.map(([n, v], i) => ({
+                    valor: n,
+                    color: colorDePeriodo(i, orden.length),
+                    rotulo: `${v.rotulo} · ${numero(v.n)}`,
+                  })),
+                  notaVacio: 'El color va de lo más antiguo a lo más reciente.',
+                }
+              : temaEscala(
+                  rasgos.map((f) => Number(f.properties?.periodo_n ?? 0)),
+                  'periodo_n',
+                  'periodo',
+                  'El color va de lo más antiguo a lo más reciente.',
+                ),
+          resumen,
+          metodo: `${numero(rasgos.length)} registros agrupados por ${paso} según la columna «${campoFecha}», de ${info.desde.toISOString().slice(0, 10)} a ${info.hasta.toISOString().slice(0, 10)}. ${comoSeLeyo(info)}${sinFecha > 0 ? ` ${numero(sinFecha)} registros no traen fecha legible y quedaron fuera.` : ''}`,
+        }),
+        puntos: elegidos,
+        aviso: info.seguro
+          ? undefined
+          : `No se pudo deducir del dato si «${campoFecha}» viene en día/mes o en mes/día: se leyó como día/mes, que es lo de aquí. Si la tabla vino de un sistema en inglés, los periodos salen cambiados.`,
+      }
+    },
+  },
   {
     clave: 'agregar-puntos',
     categoria: 'geoanalisis',

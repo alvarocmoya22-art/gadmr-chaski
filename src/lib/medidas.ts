@@ -262,3 +262,17 @@ export function cortesCuantil(valores: number[], clases = 5): number[] {
   }
   return cortes
 }
+
+/**
+ * Una cifra de leyenda con los decimales que hagan falta y ni uno más.
+ *
+ * Vive aquí y no en el panel porque la usan dos: el panel para escribir los
+ * tramos y `temaEscala` para decidir si esos tramos se distinguen entre sí. Si
+ * cada uno redondeara a su manera, la leyenda podría acabar diciendo dos veces
+ * el mismo número sin que nadie lo hubiera previsto.
+ */
+export function cifraLeyenda(n: number): string {
+  const magnitud = Math.abs(n)
+  const decimales = magnitud >= 100 ? 0 : magnitud >= 10 ? 1 : magnitud >= 1 ? 2 : 3
+  return n.toLocaleString('es-EC', { minimumFractionDigits: 0, maximumFractionDigits: decimales })
+}

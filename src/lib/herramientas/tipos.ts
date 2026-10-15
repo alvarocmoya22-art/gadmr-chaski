@@ -17,7 +17,7 @@
 import { capaDerivada, type Capa, type Fila, type Forma } from '../cargar'
 import { CATEGORIA, puntosDe, type PuntoAnalisis } from '../ambito'
 import { TODA_LA_CATEGORIA } from '../hotspot'
-import { RAMPA_GRADUADA, cortesCuantil, type Tema } from '../medidas'
+import { RAMPA_GRADUADA, cifraLeyenda, cortesCuantil, type Tema } from '../medidas'
 
 export type ClaveCategoria = 'accesibilidad' | 'geoproceso' | 'geoanalisis' | 'datos'
 
@@ -59,6 +59,8 @@ export type Parametro =
       vacio?: string
       /** Solo campos con números dentro. */
       numerico?: boolean
+      /** Solo columnas que traen fechas. */
+      fecha?: boolean
       /** De qué capa salen los campos; por omisión, la de entrada. */
       deCapa?: string
     }
@@ -235,21 +237,42 @@ export function temaEscala(
 ): Tema {
   const conDato = valores.filter((v) => Number.isFinite(v) && v > 0)
   const cortes = cortesCuantil(valores)
+
+  /*
+   * Hay tres formas de que una escala no diga nada, y las tres acaban igual:
+   * un solo color y una frase que explica entre qué valores está todo.
+   *
+   *  - Sin cortes: los cuantiles no separaron nada.
+   *  - Todos los valores iguales: el corte existe pero una de las clases queda
+   *    vacía, y la leyenda acaba diciendo «más de 100 %» de algo que nunca
+   *    pasa de 100.
+   *  - Cortes que se escriben igual: entre 99,98 y 100,01 hay cuatro cortes
+   *    distintos que la leyenda redondea al mismo número.
+   *
+   * Lo que NO vale como criterio es la magnitud del rango, que es como estaba
+   * antes: de 202601 a 202606 hay seis meses distintos y el rango es el
+   * 0,002 %, así que los pintaba todos iguales diciendo que no había
+   * diferencias.
+   */
   if (conDato.length > 0) {
     const bajo = Math.min(...conDato)
     const alto = Math.max(...conDato)
-    if (alto - bajo <= Math.abs(alto) * 0.01) {
-      const cifra = (n: number) =>
-        n.toLocaleString('es-EC', { maximumFractionDigits: alto >= 100 ? 0 : 2 })
+    const etiquetas = cortes.map(cifraLeyenda)
+    const repetidas = new Set(etiquetas).size !== etiquetas.length
+    if (cortes.length === 0 || bajo === alto || repetidas) {
       return {
         campo,
         unidad,
         cortes: [],
         colores: [RAMPA_GRADUADA[RAMPA_GRADUADA.length - 2]],
-        notaVacio: `Todas están entre ${cifra(bajo)} y ${cifra(alto)} ${unidad}: no hay diferencias que graduar. ${notaVacio}`,
+        notaVacio:
+          bajo === alto
+            ? `Todas valen ${cifraLeyenda(alto)} ${unidad}: no hay diferencias que graduar. ${notaVacio}`
+            : `Todas están entre ${cifraLeyenda(bajo)} y ${cifraLeyenda(alto)} ${unidad}: no hay diferencias que graduar. ${notaVacio}`,
       }
     }
   }
+
   return {
     campo,
     unidad,

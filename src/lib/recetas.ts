@@ -27,6 +27,8 @@ export interface Hueco {
   pista: string
   defecto?: string
   unidad?: string
+  /** Para los huecos de campo: solo los que traen fechas. */
+  soloFecha?: boolean
 }
 
 export interface Receta {
@@ -51,6 +53,21 @@ const CUALQUIERA: Forma[] = ['punto', 'linea', 'poligono', 'mixta']
 const AREAS: Forma[] = ['poligono', 'mixta']
 
 export const RECETAS: Receta[] = [
+  {
+    clave: 'avance',
+    pregunta: '¿Cómo avanzó mes a mes?',
+    frase: [
+      'Ver cómo avanzaron los registros de',
+      { clave: ENTRADA, tipo: 'capa', formas: CUALQUIERA, pista: 'una capa con fechas' },
+      'según la fecha de',
+      { clave: 'campoFecha', tipo: 'campo', pista: 'la columna', soloFecha: true },
+    ],
+    devuelve:
+      'Los registros pintados del más antiguo al más reciente, y la cuenta de cada mes con su acumulado.',
+    herramienta: 'avance-tiempo',
+    fijos: { paso: 'mes' },
+    sugerencia: 'Hace falta una capa que traiga una columna de fechas.',
+  },
   {
     clave: 'contar',
     pregunta: '¿Cuántos hay en cada zona?',

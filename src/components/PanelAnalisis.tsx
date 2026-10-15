@@ -92,7 +92,11 @@ export default function PanelAnalisis({
       const fuente = p.deCapa ? (capas.find((c) => c.id === valores[p.deCapa!]) ?? null) : capa
       if (!fuente) return null
       let campos = fuente.campos
-      if (p.numerico) campos = campos.filter((f) => esNumerico(fuente, f.nombre))
+      if (p.fecha) {
+        // Solo las que de verdad traen fechas, detectadas al cargar la capa.
+        const conFecha = new Set((fuente.fechas ?? []).map((f) => f.campo))
+        campos = campos.filter((f) => conFecha.has(f.nombre))
+      } else if (p.numerico) campos = campos.filter((f) => esNumerico(fuente, f.nombre))
       else campos = campos.filter((f) => f.distintos > 1 && f.distintos <= 200)
       return (
         <label key={p.clave} className="block">
@@ -117,9 +121,11 @@ export default function PanelAnalisis({
           </select>
           {campos.length === 0 && (
             <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-aviso)]">
-              {p.numerico
-                ? 'Esta capa no trae ningún campo con números.'
-                : 'Esta capa no trae campos que sirvan para separar.'}
+              {p.fecha
+                ? 'Esta capa no trae ninguna columna con fechas.'
+                : p.numerico
+                  ? 'Esta capa no trae ningún campo con números.'
+                  : 'Esta capa no trae campos que sirvan para separar.'}
             </span>
           )}
           {p.nota && (

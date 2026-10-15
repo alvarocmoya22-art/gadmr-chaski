@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from '../lib/municipio'
 import type { Capa } from '../lib/cargar'
 import { descargar } from '../lib/exportar'
+import { cifraLeyenda } from '../lib/medidas'
 import { numero } from '../lib/format'
 
 const FORMA: Record<Capa['forma'], string> = {
@@ -33,25 +34,9 @@ interface Props {
   onEncuadrar: (id: string) => void
 }
 
-/**
- * Una cifra con los decimales que hagan falta y ni uno más.
- *
- * Redondear todo a dos decimales deja la leyenda diciendo «hasta 0 ha» cuando
- * el primer tramo son cuatro mil metros cuadrados, y un tramo que se lee como
- * cero no separa nada.
- */
-function cifra(n: number): string {
-  const magnitud = Math.abs(n)
-  const decimales = magnitud >= 100 ? 0 : magnitud >= 10 ? 1 : magnitud >= 1 ? 2 : 3
-  return n.toLocaleString('es-EC', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimales,
-  })
-}
-
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
 function tramos(cortes: number[]): string[] {
-  const texto = cifra
+  const texto = cifraLeyenda
   if (cortes.length === 0) return ['Todas las piezas']
   const salida = [`hasta ${texto(cortes[0])}`]
   for (let i = 1; i < cortes.length; i++) salida.push(`${texto(cortes[i - 1])} a ${texto(cortes[i])}`)
@@ -264,6 +249,24 @@ export default function PanelCapas({
                       {numero(c.geo.features.length)} {FORMA[c.forma]} · {c.campos.length}{' '}
                       {c.campos.length === 1 ? 'campo' : 'campos'}
                     </p>
+                    {/*
+                      Que la capa trae fechas se dice aquí, sin que haya que
+                      buscarlo: de eso depende que aparezca el eje temporal, y
+                      quien la carga debería enterarse al mirarla.
+                    */}
+                    {c.fechas && c.fechas.length > 0 && (
+                      <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                          {c.fechas.length === 1
+                            ? `Fechas en «${c.fechas[0].campo}»`
+                            : `${numero(c.fechas.length)} columnas con fechas`}
+                        </span>
+                        {`: de ${c.fechas[0].desde.toISOString().slice(0, 10)} a ${c.fechas[0].hasta
+                          .toISOString()
+                          .slice(0, 10)}`}
+                        {!c.fechas[0].seguro && ' · día/mes asumido'}
+                      </p>
+                    )}
                   </div>
                 </div>
 

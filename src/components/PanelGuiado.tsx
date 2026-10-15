@@ -91,8 +91,9 @@ export default function PanelGuiado({
     }
 
     if (h.tipo === 'campo') {
-      const campos = (entradaElegida?.campos ?? []).filter(
-        (f) => f.distintos > 1 && f.distintos <= 200,
+      const conFecha = new Set((entradaElegida?.fechas ?? []).map((x) => x.campo))
+      const campos = (entradaElegida?.campos ?? []).filter((f) =>
+        h.soloFecha ? conFecha.has(f.nombre) : f.distintos > 1 && f.distintos <= 200,
       )
       return (
         <select
@@ -102,7 +103,13 @@ export default function PanelGuiado({
           className={comun}
           disabled={!entradaElegida}
         >
-          <option value="">{entradaElegida ? h.pista : 'elige antes la capa'}</option>
+          <option value="">
+            {!entradaElegida
+              ? 'elige antes la capa'
+              : campos.length === 0 && h.soloFecha
+                ? 'esa capa no trae fechas'
+                : h.pista}
+          </option>
           {campos.map((f) => (
             <option key={f.nombre} value={f.nombre}>
               {f.nombre}

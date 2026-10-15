@@ -16,6 +16,7 @@
  */
 import shp from 'shpjs'
 import type { Tema } from './medidas'
+import { detectarFechas, type Fechas } from './tiempo'
 
 /** Punto, línea o polígono; una capa que mezcla formas se marca «mixta». */
 export type Forma = 'punto' | 'linea' | 'poligono' | 'mixta'
@@ -53,6 +54,14 @@ export interface Capa {
   resumen?: Fila[]
   /** Cómo se obtuvo, en una frase, para que el resultado no quede huérfano. */
   metodo?: string
+  /**
+   * Las columnas que traen fechas, si las hay.
+   *
+   * Se detectan al cargar y no cuando alguien las pide: de aquí sale que el
+   * eje temporal aparezca solo cuando la capa lo permite, que es la regla que
+   * gobierna toda la interfaz.
+   */
+  fechas?: Fechas[]
 }
 
 /** La paleta del sistema, para que cada capa nueva entre con un color propio. */
@@ -88,13 +97,15 @@ export function capaDerivada(
   geo: GeoJSON.FeatureCollection,
   extra: Partial<Pick<Capa, 'tema' | 'resumen' | 'metodo' | 'color'>> = {},
 ): Capa {
+  const campos = camposDe(geo)
   return {
     id: idNuevo(),
     nombre,
     origen,
     geo,
     forma: formaDe(geo),
-    campos: camposDe(geo),
+    campos,
+    fechas: detectarFechas(geo.features, campos),
     color: extra.color ?? colorSiguiente(),
     visible: true,
     derivada: true,
@@ -330,6 +341,7 @@ export async function leerArchivo(archivo: File): Promise<{ capa: Capa; aviso?: 
     aviso = [aviso, `${sinGeometria} registros sin geometría se descartaron`].filter(Boolean).join(' · ')
   }
 
+  const campos = camposDe(geo)
   return {
     capa: {
       id: idNuevo(),
@@ -337,7 +349,8 @@ export async function leerArchivo(archivo: File): Promise<{ capa: Capa; aviso?: 
       origen: nombre,
       geo,
       forma: formaDe(geo),
-      campos: camposDe(geo),
+      campos,
+      fechas: detectarFechas(geo.features, campos),
       color: colorSiguiente(),
       visible: true,
     },
