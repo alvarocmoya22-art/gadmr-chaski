@@ -173,17 +173,18 @@ export default function PanelBase({
                 <input
                   value={ficha.anfitrion}
                   onChange={(e) => setFicha({ ...ficha, anfitrion: e.target.value })}
-                  placeholder="172.16.0.234"
+                  placeholder="localhost"
                   className={campo}
                 />
                 <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-                  El equipo donde corre el servicio que publica las tablas, que puede no ser
-                  el mismo donde está la base.
+                  El equipo donde corre <strong>el servicio que publica las tablas</strong>, que
+                  normalmente no es el de la base. Si lo corres en tu propia máquina, es{' '}
+                  <code>localhost</code>.
                 </span>
               </label>
               <div className="flex gap-2">
                 <label className="block flex-1">
-                  <span className={rotulo}>Puerto</span>
+                  <span className={rotulo}>Puerto del servicio</span>
                   <input
                     type="number"
                     value={ficha.puerto}

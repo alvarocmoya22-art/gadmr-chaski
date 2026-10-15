@@ -164,6 +164,9 @@ export function explicarFallo(e: unknown, base: string): string {
   if (paginaSegura && servicioInseguro) {
     return `Esta página va por https y el servicio por http, así que el navegador bloquea la llamada sin más explicación. Para leer una base interna, abre CHASKI dentro de la red del municipio, o publica el servicio por https.`
   }
+  if (/:543[23](\/|$)/.test(limpiarBase(base))) {
+    return `Esa dirección apunta al puerto de PostgreSQL, y ahí no hay nada que hable HTTP: en el 5432 escucha Postgres con su propio protocolo, que un navegador no sabe hablar. Hace falta un servicio que publique las tablas por HTTP —pg_featureserv, en el 9000— y apuntar la conexión a ese.`
+  }
   if (/failed to fetch|networkerror|load failed/i.test(texto)) {
     return `No se pudo llegar a ${limpiarBase(base)}. Puede estar apagado, fuera de tu red, o no permitir llamadas desde otra dirección (falta CORS en el servicio).`
   }

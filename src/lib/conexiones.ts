@@ -83,6 +83,17 @@ export function queFalta(c: Omit<Conexion, 'guardadaEn'>): string | null {
   if (/^https?:\/\//i.test(c.anfitrion)) {
     return 'El anfitrión va sin «http://»: solo el nombre o la dirección del equipo.'
   }
+  /*
+   * El error que de verdad comete todo el mundo, y con razón.
+   *
+   * Quien viene de QGIS pone aquí el puerto de PostgreSQL, porque es el que
+   * conoce. Pero en el 5432 no hay nada que hable HTTP: ahí escucha Postgres
+   * con su propio protocolo, y el navegador no sabe hablarlo. Mejor decirlo
+   * antes de intentarlo que dejar que falle con un «no se pudo llegar».
+   */
+  if (c.puerto === 5432 || c.puerto === 5433) {
+    return `El ${c.puerto} es el puerto de PostgreSQL, y ahí no hay nada que hable HTTP. Aquí va el puerto del servicio que publica las tablas —pg_featureserv usa el 9000—. La base, el 5432 y tu usuario de Postgres van en la configuración de ese servicio, no aquí.`
+  }
   return null
 }
 
