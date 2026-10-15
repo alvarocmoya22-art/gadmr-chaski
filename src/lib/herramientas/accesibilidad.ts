@@ -32,6 +32,8 @@ import {
   type PuntoAnalisis,
 } from './tipos'
 import { puntosDe } from '../ambito'
+import { MINUTOS, VELOCIDAD_KMH, calcularIsocrona, construirRed } from '../red'
+import { bandasDe, campoDeTiempos, recortarCalles, recortarCampo } from '../isocronaSuperficie'
 
 /** Tope de parejas que se calculan antes de rendirse con un aviso claro. */
 const TOPE_PAREJAS = 40_000_000
@@ -73,6 +75,157 @@ function destinosDe(
 }
 
 export const ACCESIBILIDAD: Herramienta[] = [
+  {
+    clave: 'isocrona',
+    categoria: 'accesibilidad',
+    nombre: 'Isócronas a pie',
+    nota: 'Hasta dónde se llega caminando por la calle en un tiempo dado. Lo mismo que la distancia al más cercano, pero por la vía y no en línea recta.',
+    acepta: ['punto', 'linea', 'poligono', 'mixta'],
+    avisoRepresentante: true,
+    parametros: [
+      {
+        tipo: 'capa',
+        clave: 'red',
+        rotulo: 'Caminando por',
+        formas: ['linea', 'mixta'],
+        nota: 'La capa de líneas que hace de red. La «Vialidad» del municipio sirve; una capa dibujada en CAD puede no servir si sus calles se cruzan sin compartir vértice, y entonces se avisa.',
+      },
+      {
+        tipo: 'numero',
+        clave: 'minutos',
+        rotulo: 'Hasta',
+        defecto: 10,
+        min: 1,
+        max: 60,
+        paso: 1,
+        unidad: 'min',
+      },
+      {
+        tipo: 'numero',
+        clave: 'velocidad',
+        rotulo: 'Velocidad',
+        defecto: VELOCIDAD_KMH,
+        min: 1,
+        max: 30,
+        paso: 0.5,
+        unidad: 'km/h',
+        nota: 'Caminata normal, 4,5 km/h. No descuenta la pendiente: Riobamba está a 2.750 m y sube, así que cuesta arriba se alcanza menos de lo dibujado.',
+      },
+      {
+        tipo: 'capa',
+        clave: 'ambito',
+        rotulo: 'Recortado a',
+        formas: ['poligono', 'mixta'],
+        opcional: true,
+        vacio: 'Sin recortar',
+      },
+      ...FILTRO,
+    ],
+    correr(ctx) {
+      const capaRed = capaDe(ctx, 'red')
+      if (!capaRed) return { error: 'Elige la capa de líneas por la que se camina.' }
+      const origenes = registrosDe(ctx)
+      if (origenes.length === 0) return { error: 'Con este filtro no entra ningún registro.' }
+
+      const red = construirRed(capaRed)
+      if (red.aristas.length === 0) return { error: `«${capaRed.nombre}» no trae líneas.` }
+
+      const minutosMax = numeroDe(ctx, 'minutos', 10)
+      const velocidad = numeroDe(ctx, 'velocidad', VELOCIDAD_KMH)
+      const iso = calcularIsocrona(red, origenes, minutosMax, velocidad)
+      if (iso.origenes === 0) {
+        return { error: 'Ningún registro tiene una línea de la red lo bastante cerca.' }
+      }
+
+      const campo = campoDeTiempos(red, iso, minutosMax, velocidad)
+      if (!campo) return { error: 'No se pudo formar la mancha de alcance.' }
+
+      const capaAmbito = capaDe(ctx, 'ambito')
+      const piezasAmbito = capaAmbito ? piezasDe(capaAmbito) : []
+      if (piezasAmbito.length > 0) recortarCampo(campo, piezasAmbito)
+      const calles = recortarCalles(red, iso, campo)
+
+      // Los tramos son los de siempre hasta el tope, y el tope si no estaba.
+      const tramos = MINUTOS.filter((m) => m <= minutosMax)
+      if (!tramos.includes(minutosMax)) tramos.push(minutosMax)
+      tramos.sort((a, b) => a - b)
+
+      const bandas = bandasDe(campo, tramos)
+      if (bandas.length === 0) return { error: 'El alcance quedó fuera del ámbito elegido.' }
+
+      const rasgos: GeoJSON.Feature[] = bandas.map((b) => ({
+        type: 'Feature',
+        geometry: { type: 'MultiPolygon', coordinates: b.piezas as number[][][][] },
+        properties: {
+          minutos: b.minutos,
+          hectareas: +b.hectareas.toFixed(2),
+          km_calle: +((calles.metrosPorTramo.get(b.minutos) ?? 0) / 1000).toFixed(2),
+        },
+      }))
+
+      /*
+       * Las dos columnas se leen acumuladas —lo que se alcanza en diez minutos
+       * contiene lo que se alcanza en cinco— pero no vienen igual.
+       *
+       * `bandasDe` ya cuenta las hectáreas acumuladas: una celda de tres
+       * minutos suma tanto al tramo de cinco como al de diez. Los metros de
+       * calle, en cambio, vienen repartidos por anillo, porque cada tramo se
+       * asigna al primer corte que lo contiene. Así que las hectáreas se toman
+       * tal cual y los kilómetros se van sumando.
+       *
+       * Y `bandasDe` devuelve las bandas de mayor a menor, que es el orden en
+       * que hay que dibujarlas para que la pequeña quede encima. Para leerlas
+       * hace falta el orden contrario.
+       */
+      const resumen: Fila[] = []
+      let kmAcum = 0
+      for (const b of [...bandas].sort((x, y) => x.minutos - y.minutos)) {
+        kmAcum += (calles.metrosPorTramo.get(b.minutos) ?? 0) / 1000
+        resumen.push({
+          etiqueta: `Hasta ${numero(b.minutos)} min`,
+          valor: `${numero(Math.round(b.hectareas))} ha · ${numero(Math.round(kmAcum))} km de calle`,
+        })
+      }
+      resumen.push({ etiqueta: 'Orígenes enganchados', valor: numero(iso.origenes) })
+      if (iso.sueltos > 0) {
+        resumen.push({ etiqueta: 'Sin red cerca', valor: numero(iso.sueltos) })
+      }
+      const conectada = (red.mayorPieza / red.nodos.length) * 100
+      resumen.push({
+        etiqueta: 'Red conectada',
+        valor: `${conectada.toFixed(1).replace('.', ',')} %`,
+      })
+
+      const colores = ['#1b6046', '#4e9c6b', '#9fd09a', '#d9ecc6']
+      const { nombre, origen } = tituloDe(ctx, `Isócrona de ${numero(minutosMax)} min`)
+      return {
+        capa: capaDerivada(nombre, `${origen}, caminando por ${capaRed.nombre}`, {
+          type: 'FeatureCollection',
+          features: rasgos,
+        }, {
+          tema: {
+            campo: 'minutos',
+            unidad: 'min',
+            coincidencias: bandas.map((b, i) => ({
+              valor: b.minutos,
+              color: colores[Math.min(i, colores.length - 1)],
+              rotulo: `Hasta ${numero(b.minutos)} min`,
+            })),
+            notaVacio: 'Sin color: ahí no se llega caminando en ese tiempo.',
+          },
+          resumen,
+          metodo: `Dijkstra desde ${numero(iso.origenes)} orígenes a la vez sobre ${numero(Math.round(red.metros / 1000))} km de ${capaRed.nombre}, a ${velocidad} km/h. La mancha ensancha lo alcanzable 120 m a cada lado, que es lo que se anda de la calzada a la puerta. No descuenta pendiente, ni esperas en los cruces, ni si hay vereda.${conectada < 90 ? ` Atención: la pieza conectada más grande de la red abarca solo el ${conectada.toFixed(1)} % de sus nodos, así que el recorrido puede quedarse encerrado en un trozo.` : ''}`,
+        }),
+        puntos: origenes,
+        aviso:
+          conectada < 90
+            ? `La red está partida: su pieza mayor conecta el ${conectada.toFixed(1).replace('.', ',')} % de los nodos. Comprueba que las líneas compartan vértice en los cruces.`
+            : iso.sueltos > 0
+              ? `${numero(iso.sueltos)} registros no tienen ninguna línea de la red cerca y no entraron.`
+              : undefined,
+      }
+    },
+  },
   {
     clave: 'distancia-cercano',
     categoria: 'accesibilidad',
