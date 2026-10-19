@@ -155,3 +155,21 @@ del municipio.
 2. Apuntar CHASKI ahí y comprobar que sale lo esperado.
 3. Revisar columna por columna que no se publica nada que no deba salir.
 4. Recién entonces decidir si se deja fijo y para quién.
+
+## Mientras tanto: sin instalar nada
+
+`pg_featureserv` es el destino, pero no hace falta esperarlo para trabajar.
+QGIS ya trae Python con `psycopg2`, así que
+[`scripts/exportar_base.py`](../scripts/exportar_base.py) saca las tablas del
+esquema publicado a GeoJSON y esos archivos se sueltan en CHASKI:
+
+```bash
+python scripts/exportar_base.py
+```
+
+Lee la conexión del mismo `pg_featureserv.toml` —así la contraseña vive en un
+solo sitio— y escribe un archivo por tabla, reproyectado a 4326. Abre la
+sesión en **solo lectura**, de modo que ni por error puede escribir en la base.
+
+La diferencia con el servicio es que aquí hay que volver a correrlo cuando los
+datos cambien. Para empezar a trabajar, sirve.
