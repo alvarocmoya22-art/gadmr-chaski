@@ -62,7 +62,17 @@ export default function PanelBase({
   const [abierto, setAbierto] = useState(false)
   const [ficha, setFicha] = useState<Ficha | null>(null)
 
-  const actual = conexiones.find((c) => c.nombre === elegida) ?? null
+  /*
+   * La elegida puede ser de las guardadas o de las que vienen puestas.
+   *
+   * Buscar solo entre las guardadas dejaba el boton «Ver tablas» muerto al
+   * elegir una sugerida: no habia error ni explicacion, simplemente no pasaba
+   * nada al pulsar.
+   */
+  const actual =
+    conexiones.find((c) => c.nombre === elegida) ??
+    CONEXIONES_SUGERIDAS.find((c) => c.nombre === elegida) ??
+    null
   const falta = ficha ? queFalta(ficha) : null
 
   const editar = (c: Conexion | null) =>
