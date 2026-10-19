@@ -65,6 +65,34 @@ export function cabeceraDe(usuario: string, clave: string): Record<string, strin
   return { Authorization: `Basic ${btoa(`${usuario.trim()}:${clave}`)}` }
 }
 
+/**
+ * Conexiones que ya vienen puestas.
+ *
+ * No se guardan ni se pueden borrar: se ofrecen en la lista junto a las
+ * propias para no tener que escribir lo mismo la primera vez. En cuanto
+ * alguien edita una, se guarda como suya y deja de ser una sugerencia.
+ *
+ * La del servicio local apunta a donde queda `pg_featureserv` cuando se corre
+ * en la propia máquina, que es el montaje recomendado: el servicio al lado de
+ * quien lo usa, hablando con la base por dentro de la red.
+ */
+export const CONEXIONES_SUGERIDAS: Conexion[] = [
+  {
+    nombre: 'base_grafica (servicio local)',
+    anfitrion: 'localhost',
+    puerto: 9000,
+    seguro: false,
+    ruta: '',
+    baseDatos: 'riobamba',
+    usuario: '',
+    guardadaEn: new Date(0),
+  },
+]
+
+/** Cierto si esa conexión es una de las que vienen puestas. */
+export const esSugerida = (nombre: string) =>
+  CONEXIONES_SUGERIDAS.some((c) => c.nombre === nombre)
+
 /** La dirección que de verdad se llama. */
 export function urlDe(c: Pick<Conexion, 'anfitrion' | 'puerto' | 'seguro' | 'ruta'>): string {
   const esquema = c.seguro ? 'https' : 'http'

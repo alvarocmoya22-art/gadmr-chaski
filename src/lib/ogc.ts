@@ -168,7 +168,12 @@ export function explicarFallo(e: unknown, base: string): string {
     return `Esa dirección apunta al puerto de PostgreSQL, y ahí no hay nada que hable HTTP: en el 5432 escucha Postgres con su propio protocolo, que un navegador no sabe hablar. Hace falta un servicio que publique las tablas por HTTP —pg_featureserv, en el 9000— y apuntar la conexión a ese.`
   }
   if (/failed to fetch|networkerror|load failed/i.test(texto)) {
-    return `No se pudo llegar a ${limpiarBase(base)}. Puede estar apagado, fuera de tu red, o no permitir llamadas desde otra dirección (falta CORS en el servicio).`
+    const limpia = limpiarBase(base)
+    // El caso de todos los dias: el servicio local no esta levantado.
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(limpia)) {
+      return `No hay nada escuchando en ${limpia}. ¿Arrancaste el servicio? En la carpeta pg_featureserv, clic derecho sobre «arrancar.ps1» → Ejecutar con PowerShell, y deja esa ventana abierta.`
+    }
+    return `No se pudo llegar a ${limpia}. Puede estar apagado, fuera de tu red, o no permitir llamadas desde otra dirección (falta CORS en el servicio).`
   }
   return texto
 }

@@ -40,6 +40,7 @@ import {
   type Coleccion,
 } from './lib/ogc'
 import {
+  CONEXIONES_SUGERIDAS,
   cabeceraDe,
   guardar as guardarConexion,
   listar as listarConexiones,
@@ -560,7 +561,10 @@ export default function App() {
   }, [])
 
   const conexion = useMemo(
-    () => conexiones.find((x) => x.nombre === conexionElegida) ?? null,
+    () =>
+      conexiones.find((x) => x.nombre === conexionElegida) ??
+      CONEXIONES_SUGERIDAS.find((x) => x.nombre === conexionElegida) ??
+      null,
     [conexiones, conexionElegida],
   )
   /** La dirección de la conexión elegida, que es lo que se llama de verdad. */

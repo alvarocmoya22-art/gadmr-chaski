@@ -8,7 +8,14 @@
  * el navegador.
  */
 import { useState } from 'react'
-import { CONEXION_NUEVA, queFalta, urlDe, type Conexion } from '../lib/conexiones'
+import {
+  CONEXIONES_SUGERIDAS,
+  CONEXION_NUEVA,
+  esSugerida,
+  queFalta,
+  urlDe,
+  type Conexion,
+} from '../lib/conexiones'
 import type { Coleccion } from '../lib/ogc'
 import { numero } from '../lib/format'
 
@@ -87,11 +94,24 @@ export default function PanelBase({
                   className={campo}
                 >
                   <option value="">Elige una conexión…</option>
-                  {conexiones.map((c) => (
-                    <option key={c.nombre} value={c.nombre}>
-                      {c.nombre}
-                    </option>
-                  ))}
+                  {conexiones.length > 0 && (
+                    <optgroup label="Tuyas">
+                      {conexiones.map((c) => (
+                        <option key={c.nombre} value={c.nombre}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="Ya puestas">
+                    {CONEXIONES_SUGERIDAS.filter(
+                      (s) => !conexiones.some((c) => c.nombre === s.nombre),
+                    ).map((c) => (
+                      <option key={c.nombre} value={c.nombre}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </label>
 
@@ -144,13 +164,15 @@ export default function PanelBase({
                     >
                       Editar
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => onOlvidar(actual.nombre)}
-                      className="rounded px-2 py-1.5 text-sm text-[var(--gr-error)]"
-                    >
-                      Borrar
-                    </button>
+                    {!esSugerida(actual.nombre) && (
+                      <button
+                        type="button"
+                        onClick={() => onOlvidar(actual.nombre)}
+                        className="rounded px-2 py-1.5 text-sm text-[var(--gr-error)]"
+                      >
+                        Borrar
+                      </button>
+                    )}
                   </>
                 )}
               </div>
