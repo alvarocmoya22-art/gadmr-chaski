@@ -131,8 +131,20 @@ def main() -> None:
     esquemas = args.esquema or esquemas_toml
 
     args.salida.mkdir(parents=True, exist_ok=True)
+    try:
+        conexion = psycopg2.connect(cadena)
+    except psycopg2.OperationalError as e:
+        # El traceback de psycopg2 no le dice nada a nadie; estos son los dos
+        # motivos de verdad frecuentes.
+        detalle = str(e).strip().splitlines()[0]
+        if "password" in detalle.lower() or "autenticaci" in detalle.lower():
+            sys.exit("La base rechazo el usuario o la clave: " + detalle)
+        sys.exit("No se pudo llegar a la base. Comprueba que estas en la red "
+                 "del municipio y que el anfitrion y el puerto son los "
+                 "correctos: " + detalle)
+
     # Solo lectura, y dicho tambien a la base: si algo intentara escribir, falla.
-    with psycopg2.connect(cadena) as conexion:
+    with conexion:
         conexion.set_session(readonly=True)
         with conexion.cursor() as cur:
             tablas = tablas_con_geometria(cur, esquemas)
