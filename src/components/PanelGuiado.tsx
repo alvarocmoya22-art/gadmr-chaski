@@ -8,31 +8,40 @@
  * hace falta saber cuál es la capa de entrada y cuál la de zonas: lo dice la
  * frase.
  */
-import type { Capa } from '../lib/cargar'
-import { ENTRADA, RECETAS, factibilidad, type Hueco, type Receta } from '../lib/recetas'
-import { numero } from '../lib/format'
+import type { Capa } from "../lib/cargar";
+import {
+  ENTRADA,
+  RECETAS,
+  factibilidad,
+  type Hueco,
+  type Receta,
+} from "../lib/recetas";
+import { sugerenciasDe } from "../lib/sugerencias";
+import { numero } from "../lib/format";
 
-const FORMA: Record<Capa['forma'], string> = {
-  punto: 'puntos',
-  linea: 'líneas',
-  poligono: 'áreas',
-  mixta: 'formas mezcladas',
-}
+const FORMA: Record<Capa["forma"], string> = {
+  punto: "puntos",
+  linea: "líneas",
+  poligono: "áreas",
+  mixta: "formas mezcladas",
+};
 
 interface Props {
-  capas: Capa[]
-  receta: Receta | null
-  onReceta: (clave: string) => void
-  valores: Record<string, string>
-  onValores: (v: Record<string, string>) => void
-  calculando: boolean
-  onCorrer: () => void
-  error: string | null
+  capas: Capa[];
+  receta: Receta | null;
+  onReceta: (clave: string) => void;
+  valores: Record<string, string>;
+  onValores: (v: Record<string, string>) => void;
+  calculando: boolean;
+  onCorrer: () => void;
+  error: string | null;
+  /** Elegir una pregunta ya concreta: receta y huecos de una vez. */
+  onSugerencia: (receta: string, valores: Record<string, string>) => void;
 }
 
 /** Las capas que sirven para un hueco. */
 const capasPara = (capas: Capa[], h: Hueco) =>
-  capas.filter((c) => (h.formas ?? []).includes(c.forma))
+  capas.filter((c) => (h.formas ?? []).includes(c.forma));
 
 export default function PanelGuiado({
   capas,
@@ -43,17 +52,19 @@ export default function PanelGuiado({
   calculando,
   onCorrer,
   error,
+  onSugerencia,
 }: Props) {
   if (capas.length === 0) {
     return (
       <p className="text-xs leading-relaxed text-[var(--gr-tinta-3)]">
-        Carga una capa —o prueba con el ejemplo— y aquí aparecen las preguntas que se
-        pueden responder.
+        Carga una capa —o prueba con el ejemplo— y aquí aparecen las preguntas
+        que se pueden responder.
       </p>
-    )
+    );
   }
 
-  const huecos = (r: Receta) => r.frase.filter((p): p is Hueco => typeof p !== 'string')
+  const huecos = (r: Receta) =>
+    r.frase.filter((p): p is Hueco => typeof p !== "string");
 
   /*
    * Qué se puede responder con lo que hay cargado ahora.
@@ -62,58 +73,75 @@ export default function PanelGuiado({
    * imposibles atenuadas entre las demás: con trece preguntas, «atenuada» se
    * lee como «esta es menos importante», no como «con tus datos, esta no».
    */
-  const veredictos = new Map(RECETAS.map((r) => [r.clave, factibilidad(r, capas)]))
-  const puedo = RECETAS.filter((r) => veredictos.get(r.clave)?.puede)
-  const noPuedo = RECETAS.filter((r) => !veredictos.get(r.clave)?.puede)
+  const veredictos = new Map(
+    RECETAS.map((r) => [r.clave, factibilidad(r, capas)]),
+  );
+  const puedo = RECETAS.filter((r) => veredictos.get(r.clave)?.puede);
+  const noPuedo = RECETAS.filter((r) => !veredictos.get(r.clave)?.puede);
+
+  /*
+   * Las preguntas que estas capas sugieren, ya con nombres dentro.
+   *
+   * Van arriba porque son la respuesta a «y ahora qué hago con esto», que es
+   * donde se atasca quien abre esto por primera vez. La lista entera sigue
+   * debajo: esto no quita nada, adelanta.
+   */
+  const sugeridas = sugerenciasDe(capas);
 
   const entradaElegida = receta
     ? (capas.find((c) => c.id === valores[ENTRADA]) ?? null)
-    : null
+    : null;
 
   const listo =
     receta !== null &&
     huecos(receta).every((h) => {
-      const v = valores[h.clave]
-      if (h.tipo === 'numero') return (v ?? h.defecto ?? '') !== ''
-      return (v ?? '') !== ''
-    })
+      const v = valores[h.clave];
+      if (h.tipo === "numero") return (v ?? h.defecto ?? "") !== "";
+      return (v ?? "") !== "";
+    });
 
   const hueco = (h: Hueco, i: number) => {
     const comun =
-      'mx-0.5 inline-block rounded border border-[var(--gr-azul-500)] bg-[var(--gr-superficie)] px-1 py-0.5 text-sm font-semibold text-[var(--gr-azul-500)]'
+      "mx-0.5 inline-block rounded border border-[var(--gr-azul-500)] bg-[var(--gr-superficie)] px-1 py-0.5 text-sm font-semibold text-[var(--gr-azul-500)]";
 
-    if (h.tipo === 'numero') {
+    if (h.tipo === "numero") {
       return (
         <span key={i}>
           <input
             type="number"
-            value={valores[h.clave] ?? h.defecto ?? ''}
-            onChange={(e) => onValores({ ...valores, [h.clave]: e.target.value })}
+            value={valores[h.clave] ?? h.defecto ?? ""}
+            onChange={(e) =>
+              onValores({ ...valores, [h.clave]: e.target.value })
+            }
             className={`${comun} w-20`}
           />
-          {h.unidad ? ` ${h.unidad}` : ''}
+          {h.unidad ? ` ${h.unidad}` : ""}
         </span>
-      )
+      );
     }
 
-    if (h.tipo === 'campo') {
-      const conFecha = new Set((entradaElegida?.fechas ?? []).map((x) => x.campo))
+    if (h.tipo === "campo") {
+      const conFecha = new Set(
+        (entradaElegida?.fechas ?? []).map((x) => x.campo),
+      );
       const campos = (entradaElegida?.campos ?? []).filter((f) =>
-        h.soloFecha ? conFecha.has(f.nombre) : f.distintos > 1 && f.distintos <= 200,
-      )
+        h.soloFecha
+          ? conFecha.has(f.nombre)
+          : f.distintos > 1 && f.distintos <= 200,
+      );
       return (
         <select
           key={i}
-          value={valores[h.clave] ?? ''}
+          value={valores[h.clave] ?? ""}
           onChange={(e) => onValores({ ...valores, [h.clave]: e.target.value })}
           className={comun}
           disabled={!entradaElegida}
         >
           <option value="">
             {!entradaElegida
-              ? 'elige antes la capa'
+              ? "elige antes la capa"
               : campos.length === 0 && h.soloFecha
-                ? 'esa capa no trae fechas'
+                ? "esa capa no trae fechas"
                 : h.pista}
           </option>
           {campos.map((f) => (
@@ -122,19 +150,19 @@ export default function PanelGuiado({
             </option>
           ))}
         </select>
-      )
+      );
     }
 
-    const candidatas = capasPara(capas, h)
+    const candidatas = capasPara(capas, h);
     return (
       <select
         key={i}
-        value={valores[h.clave] ?? ''}
+        value={valores[h.clave] ?? ""}
         onChange={(e) =>
           onValores(
             // Al cambiar la capa de entrada, el campo elegido deja de valer.
             h.clave === ENTRADA
-              ? { ...valores, [h.clave]: e.target.value, campo: '' }
+              ? { ...valores, [h.clave]: e.target.value, campo: "" }
               : { ...valores, [h.clave]: e.target.value },
           )
         }
@@ -147,13 +175,13 @@ export default function PanelGuiado({
           </option>
         ))}
       </select>
-    )
-  }
+    );
+  };
 
   const tarjeta = (r: Receta) => {
-    const activa = receta?.clave === r.clave
-    const v = veredictos.get(r.clave)
-    const usable = v?.puede ?? false
+    const activa = receta?.clave === r.clave;
+    const v = veredictos.get(r.clave);
+    const usable = v?.puede ?? false;
     return (
       <li key={r.clave}>
         <button
@@ -161,10 +189,10 @@ export default function PanelGuiado({
           onClick={() => onReceta(r.clave)}
           className={`w-full rounded-md border p-2 text-left ${
             activa
-              ? 'border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]'
+              ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]"
               : usable
-                ? 'border-[var(--gr-linea)] bg-[var(--gr-superficie)] hover:border-[var(--gr-azul-500)]'
-                : 'border-[var(--gr-linea)] bg-transparent opacity-70'
+                ? "border-[var(--gr-linea)] bg-[var(--gr-superficie)] hover:border-[var(--gr-azul-500)]"
+                : "border-[var(--gr-linea)] bg-transparent opacity-70"
           }`}
         >
           <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
@@ -181,7 +209,11 @@ export default function PanelGuiado({
           <div className="mt-1.5 space-y-2 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2">
             <p className="text-sm leading-7 text-[var(--gr-tinta)]">
               {r.frase.map((parte, i) =>
-                typeof parte === 'string' ? <span key={i}> {parte} </span> : hueco(parte, i),
+                typeof parte === "string" ? (
+                  <span key={i}> {parte} </span>
+                ) : (
+                  hueco(parte, i)
+                ),
               )}
             </p>
 
@@ -196,7 +228,11 @@ export default function PanelGuiado({
               disabled={calculando || !listo}
               className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {calculando ? 'Calculando…' : listo ? 'Ver el resultado' : 'Completa la frase'}
+              {calculando
+                ? "Calculando…"
+                : listo
+                  ? "Ver el resultado"
+                  : "Completa la frase"}
             </button>
 
             {error && (
@@ -207,14 +243,44 @@ export default function PanelGuiado({
           </div>
         )}
       </li>
-    )
-  }
+    );
+  };
 
   return (
     <section className="space-y-2">
+      {sugeridas.length > 0 && (
+        <div className="rounded-md border border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)] p-2">
+          <p className="mb-1.5 text-xs font-bold text-[var(--gr-tinta)]">
+            Con lo que tienes cargado, puedes preguntar
+          </p>
+          <ul className="space-y-1">
+            {sugeridas.map((s) => (
+              <li key={s.clave}>
+                <button
+                  type="button"
+                  onClick={() => onSugerencia(s.receta, s.valores)}
+                  className="w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1.5 text-left hover:border-[var(--gr-azul-500)]"
+                >
+                  <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
+                    {s.pregunta}
+                  </span>
+                  <span className="block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                    {s.porque}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1.5 text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            Salen de mirar tus capas —su geometría, cuántos registros traen y
+            qué columnas—, aquí en tu navegador. No se consulta nada por fuera.
+          </p>
+        </div>
+      )}
+
       <p className="text-xs leading-snug text-[var(--gr-tinta-3)]">
-        Estas son las preguntas que tus capas responden ahora mismo. Completa la frase
-        y por debajo corre la misma herramienta que en la otra pestaña.
+        O elige una pregunta de la lista y completa la frase. Por debajo corre
+        la misma herramienta que en la otra pestaña.
       </p>
 
       {puedo.length > 0 && (
@@ -224,17 +290,19 @@ export default function PanelGuiado({
       {noPuedo.length > 0 && (
         <details className="rounded-md border border-[var(--gr-linea)]">
           <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-[var(--gr-tinta-2)]">
-            {numero(noPuedo.length)}{' '}
-            {noPuedo.length === 1 ? 'pregunta necesita' : 'preguntas necesitan'} otros datos
+            {numero(noPuedo.length)}{" "}
+            {noPuedo.length === 1 ? "pregunta necesita" : "preguntas necesitan"}{" "}
+            otros datos
           </summary>
           <ul className="space-y-1.5 px-2 pb-2">{noPuedo.map(tarjeta)}</ul>
         </details>
       )}
 
       <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-        {numero(puedo.length)} de {numero(RECETAS.length)} preguntas con lo que tienes
-        cargado. Si lo que buscas no está, la pestaña de herramientas tiene la caja entera.
+        {numero(puedo.length)} de {numero(RECETAS.length)} preguntas con lo que
+        tienes cargado. Si lo que buscas no está, la pestaña de herramientas
+        tiene la caja entera.
       </p>
     </section>
-  )
+  );
 }

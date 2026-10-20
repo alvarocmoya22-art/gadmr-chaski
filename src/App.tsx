@@ -247,6 +247,22 @@ export default function App() {
     setError(null);
   }, []);
 
+  /**
+   * Elegir una pregunta ya concreta: receta y huecos de una vez.
+   *
+   * No se puede reutilizar `elegirReceta` y luego poner los valores: esa
+   * función borra los huecos para dejarlos con sus valores por omisión, así
+   * que los que vienen de la sugerencia se perderían.
+   */
+  const elegirSugerencia = useCallback(
+    (receta: string, valores: Record<string, string>) => {
+      setRecetaClave(receta);
+      setValoresGuiado(valores);
+      setError(null);
+    },
+    [],
+  );
+
   /** Mete capas nuevas en la lista y deja el mapa mirándolas. */
   const recibir = useCallback(
     (nuevas: Capa[]) => {
@@ -1086,6 +1102,7 @@ export default function App() {
                       capas={capas}
                       receta={receta}
                       onReceta={elegirReceta}
+                      onSugerencia={elegirSugerencia}
                       valores={valoresGuiado}
                       onValores={setValoresGuiado}
                       calculando={calculando}

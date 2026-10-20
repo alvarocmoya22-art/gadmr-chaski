@@ -18,19 +18,19 @@
  * de la red local, de modo que los datos institucionales no salen a internet
  * por este camino. Para eso, CHASKI se corre dentro de la red del municipio.
  */
-import { leerArchivo, type Capa } from './cargar'
+import { leerArchivo, type Capa } from "./cargar";
 
 /** Una tabla publicada por el servicio. */
 export interface Coleccion {
-  id: string
-  titulo: string
-  descripcion: string
+  id: string;
+  titulo: string;
+  descripcion: string;
   /** Cuántos registros declara tener, si lo dice. */
-  registros: number | null
+  registros: number | null;
 }
 
 /** Cuántos rasgos se piden por vuelta. */
-const POR_VUELTA = 1000
+const POR_VUELTA = 1000;
 
 /**
  * Tope de rasgos que se traen de una colección.
@@ -39,20 +39,42 @@ const POR_VUELTA = 1000
  * millones tumbaría la pestaña. Al llegar aquí se corta y se dice que se
  * cortó, que es mejor que quedarse colgado sin explicación.
  */
-export const TOPE_RASGOS = 60000
+export const TOPE_RASGOS = 60000;
+
+/**
+ * El nombre de una tabla, para enseñarlo.
+ *
+ * `public.gis_licenaprob_a_phdu` no es un nombre: es una dirección. Se le
+ * quita el esquema, el `gis_` de delante y el sufijo de geometría y
+ * departamento de detrás, que son los mismos en todas y no distinguen nada.
+ * Lo que queda es lo que esa capa es.
+ *
+ * El identificador completo no se pierde: sigue en el origen de la capa, que
+ * es donde hace falta para saber de dónde salió un dato.
+ */
+export function nombreCorto(titulo: string): string {
+  const limpio = titulo
+    .replace(/^[a-z_]+\./i, "")
+    .replace(/^gis_/i, "")
+    .replace(/_(a|l|p)_(phdu|gir|acs)$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+  if (limpio === "") return titulo;
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+}
 
 /** Quita la barra final y el `?f=json` que alguien haya pegado de más. */
 export function limpiarBase(url: string): string {
-  return url.trim().replace(/\?.*$/, '').replace(/\/+$/, '')
+  return url.trim().replace(/\?.*$/, "").replace(/\/+$/, "");
 }
 
 interface RespuestaColecciones {
   collections?: {
-    id: string
-    title?: string
-    description?: string
-    itemCount?: number
-  }[]
+    id: string;
+    title?: string;
+    description?: string;
+    itemCount?: number;
+  }[];
 }
 
 /** Las tablas que el servicio publica. */
@@ -60,34 +82,36 @@ export async function listarColecciones(
   base: string,
   cabeceras: Record<string, string> = {},
 ): Promise<Coleccion[]> {
-  const url = `${limpiarBase(base)}/collections?f=json`
-  const resp = await fetch(url, { headers: cabeceras })
+  const url = `${limpiarBase(base)}/collections?f=json`;
+  const resp = await fetch(url, { headers: cabeceras });
   if (resp.status === 401 || resp.status === 403) {
     throw new Error(
       // El usuario vive en la ficha y la clave en su propio campo: decir solo
       // «ponlos en la ficha» manda al sitio equivocado a quien ya tiene usuario.
-      'El servicio pide usuario y clave, o los que diste no valen. Revisa el usuario en la ficha de la conexión y vuelve a escribir la clave.',
-    )
+      "El servicio pide usuario y clave, o los que diste no valen. Revisa el usuario en la ficha de la conexión y vuelve a escribir la clave.",
+    );
   }
-  if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`)
-  const datos = (await resp.json()) as RespuestaColecciones
+  if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`);
+  const datos = (await resp.json()) as RespuestaColecciones;
   if (!Array.isArray(datos.collections)) {
-    throw new Error('la dirección respondió, pero no parece un servicio OGC API Features')
+    throw new Error(
+      "la dirección respondió, pero no parece un servicio OGC API Features",
+    );
   }
   return datos.collections.map((c) => ({
     id: c.id,
     titulo: c.title || c.id,
-    descripcion: c.description ?? '',
-    registros: typeof c.itemCount === 'number' ? c.itemCount : null,
-  }))
+    descripcion: c.description ?? "",
+    registros: typeof c.itemCount === "number" ? c.itemCount : null,
+  }));
 }
 
 interface Pagina {
-  type?: string
-  features?: GeoJSON.Feature[]
-  numberMatched?: number
-  numberReturned?: number
-  links?: { rel?: string; href?: string; type?: string }[]
+  type?: string;
+  features?: GeoJSON.Feature[];
+  numberMatched?: number;
+  numberReturned?: number;
+  links?: { rel?: string; href?: string; type?: string }[];
 }
 
 /**
@@ -104,17 +128,18 @@ export async function traerColeccion(
   alAvanzar?: (traidos: number, total: number | null) => void,
   cabeceras: Record<string, string> = {},
 ): Promise<{
-  capa: Capa
-  cortada: boolean
-  total: number | null
+  capa: Capa;
+  cortada: boolean;
+  total: number | null;
   /** Filas que la base devolvió sin geometría y no se pudieron dibujar. */
-  sinGeometria: number
+  sinGeometria: number;
 }> {
-  const raiz = limpiarBase(base)
-  let url: string | null = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}`
-  const rasgos: GeoJSON.Feature[] = []
-  let total: number | null = null
-  let cortada = false
+  const raiz = limpiarBase(base);
+  let url: string | null =
+    `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}`;
+  const rasgos: GeoJSON.Feature[] = [];
+  let total: number | null = null;
+  let cortada = false;
   /*
    * Filas pedidas, no rasgos guardados.
    *
@@ -123,28 +148,28 @@ export async function traerColeccion(
    * que cada fila descartada corriera la ventana hacia atrás y volviera a
    * pedir filas ya traídas: la capa saldría con registros repetidos.
    */
-  let recibidos = 0
+  let recibidos = 0;
 
   while (url) {
-    const resp: Response = await fetch(url, { headers: cabeceras })
-    if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`)
-    const pagina = (await resp.json()) as Pagina
+    const resp: Response = await fetch(url, { headers: cabeceras });
+    if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`);
+    const pagina = (await resp.json()) as Pagina;
     for (const f of pagina.features ?? []) {
-      if (!f?.geometry) continue
-      rasgos.push(f)
+      if (!f?.geometry) continue;
+      rasgos.push(f);
     }
-    if (typeof pagina.numberMatched === 'number') total = pagina.numberMatched
-    alAvanzar?.(rasgos.length, total)
+    if (typeof pagina.numberMatched === "number") total = pagina.numberMatched;
+    alAvanzar?.(rasgos.length, total);
 
     if (rasgos.length >= TOPE_RASGOS) {
-      cortada = true
-      break
+      cortada = true;
+      break;
     }
-    const vinieron = pagina.numberReturned ?? pagina.features?.length ?? 0
-    recibidos += vinieron
+    const vinieron = pagina.numberReturned ?? pagina.features?.length ?? 0;
+    recibidos += vinieron;
     // Sin rasgos nuevos no hay nada que seguir: evita dar vueltas si el
     // servicio devuelve un `next` que apunta a una página vacía.
-    if (vinieron === 0) break
+    if (vinieron === 0) break;
 
     /*
      * Cómo se pasa a la página siguiente.
@@ -160,36 +185,39 @@ export async function traerColeccion(
      * es lo que el propio estándar define para paginar. Si vino a medias, es
      * la última y no hay nada más que pedir.
      */
-    const siguiente = (pagina.links ?? []).find((l) => l.rel === 'next')?.href
+    const siguiente = (pagina.links ?? []).find((l) => l.rel === "next")?.href;
     if (siguiente) {
-      url = siguiente.includes('f=json') ? siguiente : `${siguiente}&f=json`
+      url = siguiente.includes("f=json") ? siguiente : `${siguiente}&f=json`;
     } else if (vinieron >= POR_VUELTA) {
-      url = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}&offset=${recibidos}`
+      url = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}&offset=${recibidos}`;
     } else {
-      url = null
+      url = null;
     }
   }
 
-  if (rasgos.length === 0) throw new Error('la colección llegó vacía')
+  if (rasgos.length === 0) throw new Error("la colección llegó vacía");
 
   /*
    * Se pasa por el mismo lector que un archivo soltado a mano: así la capa que
    * viene de la base se describe, se analiza y se exporta igual que las demás,
    * sin un camino aparte que pueda comportarse de otro modo.
    */
-  const geo: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: rasgos }
-  const archivo = new File([JSON.stringify(geo)], `${coleccion.id}.geojson`)
-  const { capa } = await leerArchivo(archivo)
+  const geo: GeoJSON.FeatureCollection = {
+    type: "FeatureCollection",
+    features: rasgos,
+  };
+  const archivo = new File([JSON.stringify(geo)], `${coleccion.id}.geojson`);
+  const { capa } = await leerArchivo(archivo);
   return {
     sinGeometria: recibidos - rasgos.length,
     capa: {
       ...capa,
-      nombre: coleccion.titulo,
-      origen: `Base institucional · ${coleccion.id}${cortada ? ` (primeros ${TOPE_RASGOS})` : ''}`,
+      nombre: nombreCorto(coleccion.titulo),
+      origen: `Base institucional · ${coleccion.id}${cortada ? ` (primeros ${TOPE_RASGOS})` : ""}`,
     },
     cortada,
     total,
-  }
+  };
 }
 
 /**
@@ -199,22 +227,22 @@ export async function traerColeccion(
  * del navegador, así que se traducen aquí.
  */
 export function explicarFallo(e: unknown, base: string): string {
-  const texto = e instanceof Error ? e.message : String(e)
-  const paginaSegura = location.protocol === 'https:'
-  const servicioInseguro = limpiarBase(base).startsWith('http://')
+  const texto = e instanceof Error ? e.message : String(e);
+  const paginaSegura = location.protocol === "https:";
+  const servicioInseguro = limpiarBase(base).startsWith("http://");
   if (paginaSegura && servicioInseguro) {
-    return `Esta página va por https y el servicio por http, así que el navegador bloquea la llamada sin más explicación. Para leer una base interna, abre CHASKI dentro de la red del municipio, o publica el servicio por https.`
+    return `Esta página va por https y el servicio por http, así que el navegador bloquea la llamada sin más explicación. Para leer una base interna, abre CHASKI dentro de la red del municipio, o publica el servicio por https.`;
   }
   if (/:543[23](\/|$)/.test(limpiarBase(base))) {
-    return `Esa dirección apunta al puerto de PostgreSQL, y ahí no hay nada que hable HTTP: en el 5432 escucha Postgres con su propio protocolo, que un navegador no sabe hablar. Hace falta un servicio que publique las tablas por HTTP —pg_featureserv, en el 9000— y apuntar la conexión a ese.`
+    return `Esa dirección apunta al puerto de PostgreSQL, y ahí no hay nada que hable HTTP: en el 5432 escucha Postgres con su propio protocolo, que un navegador no sabe hablar. Hace falta un servicio que publique las tablas por HTTP —pg_featureserv, en el 9000— y apuntar la conexión a ese.`;
   }
   if (/failed to fetch|networkerror|load failed/i.test(texto)) {
-    const limpia = limpiarBase(base)
+    const limpia = limpiarBase(base);
     // El caso de todos los dias: el servicio local no esta levantado.
     if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(limpia)) {
-      return `No hay nada escuchando en ${limpia}. ¿Arrancaste el servicio? En la carpeta pg_featureserv, clic derecho sobre «arrancar.ps1» → Ejecutar con PowerShell, y deja esa ventana abierta.`
+      return `No hay nada escuchando en ${limpia}. ¿Arrancaste el servicio? En la carpeta pg_featureserv, clic derecho sobre «arrancar.ps1» → Ejecutar con PowerShell, y deja esa ventana abierta.`;
     }
-    return `No se pudo llegar a ${limpia}. Puede estar apagado, fuera de tu red, o no permitir llamadas desde otra dirección (falta CORS en el servicio).`
+    return `No se pudo llegar a ${limpia}. Puede estar apagado, fuera de tu red, o no permitir llamadas desde otra dirección (falta CORS en el servicio).`;
   }
-  return texto
+  return texto;
 }
