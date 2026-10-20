@@ -55,27 +55,56 @@ export default function PanelMirar({
   }
 
   const urbano = ambitos.find((a) => a.nivel === "urbano");
-  const plataformas = ambitos.filter((a) => a.nivel === "plataforma");
   const actual = ambitos.find((a) => a.clave === elegido) ?? urbano ?? null;
 
   /*
-   * El ámbito y el barrio se eligen en dos pasos, no en una lista de 231.
+   * Se baja en tres pasos, de lo macro a lo pequeño: parroquia, plataforma,
+   * barrio.
    *
-   * Antes era un solo desplegable con las 18 plataformas y los 212 barrios
-   * seguidos: encontrar el barrio que a uno le interesa ahí dentro es ir
-   * leyendo. Así, el barrio se elige **dentro** de la plataforma, y el rótulo
-   * dice cuántos hay para que se vea que la lista se acortó a propósito.
+   * Un solo desplegable con las 18 plataformas y los 212 barrios seguidos
+   * obliga a ir leyendo hasta dar con el que uno quiere. Así cada lista se
+   * acorta con la elección de arriba, y el rótulo dice cuántos quedan para
+   * que se vea que se acortó a propósito y no que faltan.
    */
+  const parroquias = ambitos.filter((a) => a.nivel === "parroquia");
+
   const plataformaActiva =
     actual?.nivel === "plataforma" ? actual.clave : (actual?.padre ?? "");
 
-  const barrios = ambitos.filter(
+  /** La parroquia, que puede estar a uno o a dos saltos del ámbito elegido. */
+  const parroquiaActiva =
+    actual?.nivel === "parroquia"
+      ? actual.clave
+      : (ambitos.find((a) => a.clave === plataformaActiva)?.padre ?? "");
+
+  const plataformas = ambitos.filter(
     (a) =>
-      a.nivel === "barrio" &&
-      (plataformaActiva === "" || a.padre === plataformaActiva),
+      a.nivel === "plataforma" &&
+      (parroquiaActiva === "" || a.padre === parroquiaActiva),
   );
 
+  /*
+   * Los barrios de la plataforma elegida y, si no hay ninguna, los de toda la
+   * parroquia: un salto más arriba, por la plataforma de la que cuelgan.
+   */
+  /*
+   * Los de la parroquia se filtran por la parroquia del BARRIO, no por la de
+   * su plataforma. Yendo por la plataforma salían 102 donde la cifra de al
+   * lado decía 107: cinco barrios de Lizarzaburu cuelgan de una plataforma
+   * que pertenece a otra parroquia, y la lista y el número contaban cosas
+   * distintas sin decirlo.
+   */
+  const barrios = ambitos.filter((a) => {
+    if (a.nivel !== "barrio") return false;
+    if (plataformaActiva !== "") return a.padre === plataformaActiva;
+    if (parroquiaActiva !== "") return a.abuelo === parroquiaActiva;
+    return true;
+  });
+
   const sup = (a: Ambito) => `${numero(Math.round(a.ha))} ha`;
+  /** «las 7» / «la 1», porque «las 1 de Yaruquíes» se lee fatal. */
+  const cuantas = (n: number) => (n === 1 ? "la 1" : `las ${numero(n)}`);
+  const cuantos = (n: number) => (n === 1 ? "el 1" : `los ${numero(n)}`);
   const rotulo =
     "text-[11px] font-semibold uppercase tracking-wide text-[var(--gr-tinta-3)]";
   const campo =
@@ -83,14 +112,43 @@ export default function PanelMirar({
 
   return (
     <section className="space-y-3">
+      {parroquias.length > 0 && (
+        <div>
+          <span className={rotulo}>
+            Parroquia
+            {parroquias.length > 0 && ` · ${numero(parroquias.length)}`}
+          </span>
+          <select
+            value={parroquiaActiva || urbano?.clave || ""}
+            onChange={(e) => onElegir(e.target.value)}
+            className={campo}
+          >
+            {urbano && <option value={urbano.clave}>{urbano.titulo}</option>}
+            {parroquias.map((a) => (
+              <option key={a.clave} value={a.clave}>
+                {a.titulo} · {sup(a)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div>
-        <span className={rotulo}>Ámbito</span>
+        <span className={rotulo}>
+          Plataforma
+          {parroquiaActiva
+            ? ` · ${cuantas(plataformas.length)} de ${ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? ""}`
+            : ` · ${cuantas(plataformas.length)} del urbano`}
+        </span>
         <select
-          value={plataformaActiva || urbano?.clave || ""}
-          onChange={(e) => onElegir(e.target.value)}
+          // Al volver a «todas», se sube a la parroquia que las contiene.
+          value={plataformaActiva}
+          onChange={(e) =>
+            onElegir(e.target.value || parroquiaActiva || urbano?.clave || "")
+          }
           className={campo}
         >
-          {urbano && <option value={urbano.clave}>{urbano.titulo}</option>}
+          <option value="">Todas las plataformas</option>
           {plataformas.map((a) => (
             <option key={a.clave} value={a.clave}>
               {a.titulo} · {sup(a)}
@@ -137,15 +195,24 @@ export default function PanelMirar({
       <div>
         <span className={rotulo}>
           Barrio
+          {` · ${cuantos(barrios.length)} de `}
           {plataformaActiva
-            ? ` · los ${numero(barrios.length)} de la ${actual?.nivel === "barrio" ? (ambitos.find((x) => x.clave === plataformaActiva)?.titulo ?? "") : (actual?.titulo ?? "")}`
-            : ` · los ${numero(barrios.length)} del urbano`}
+            ? (ambitos.find((x) => x.clave === plataformaActiva)?.titulo ?? "")
+            : parroquiaActiva
+              ? (ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? "")
+              : "todo el urbano"}
         </span>
         <select
           // Al volver a «todos», se sube al ámbito que contiene a estos barrios.
           value={actual?.nivel === "barrio" ? actual.clave : ""}
           onChange={(e) =>
-            onElegir(e.target.value || plataformaActiva || urbano?.clave || "")
+            onElegir(
+              e.target.value ||
+                plataformaActiva ||
+                parroquiaActiva ||
+                urbano?.clave ||
+                "",
+            )
           }
           className={campo}
         >

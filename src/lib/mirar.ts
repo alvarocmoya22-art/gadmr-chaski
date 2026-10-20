@@ -12,6 +12,7 @@
  */
 import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from "./geo";
 import { areaM2 } from "./medidas";
+import { aMulti, intersecar, planoDe } from "./geoproceso";
 import { ORIGEN_VISOR } from "./municipio";
 import { numero } from "./format";
 import type { Capa, Fila } from "./cargar";
@@ -44,7 +45,7 @@ export interface Ambito {
   clave: string;
   titulo: string;
   /** De qué capa salió, para saber a qué nivel está. */
-  nivel: "urbano" | "plataforma" | "barrio";
+  nivel: "urbano" | "parroquia" | "plataforma" | "barrio";
   piezas: Anillo[][];
   caja: Caja;
   pob: number | null;
@@ -52,7 +53,13 @@ export interface Ambito {
   /** Superficie medida sobre el elipsoide, no la declarada en el shapefile. */
   ha: number;
   /**
-   * La plataforma que contiene este barrio, si se pudo decidir.
+   * El ámbito que lo contiene, un nivel por encima.
+   *
+   * Un barrio cuelga de su plataforma, una plataforma de su parroquia. Es lo
+   * que permite que los desplegables se encadenen —«los 24 de la plataforma
+   * C»— en vez de enseñar los 212 barrios de la ciudad seguidos. Lo que caiga
+   * fuera de todo se queda sin padre: no inventarle uno es mejor que colgarlo
+   * de la vecina.
    *
    * Es lo que permite que el desplegable de barrios enseñe «los 24 de la
    * plataforma C» en vez de los 212 de la ciudad seguidos. Los barrios que
@@ -60,6 +67,16 @@ export interface Ambito {
    * ámbito urbano: no inventarles una es mejor que colgarlos de la vecina.
    */
   padre?: string;
+  /**
+   * La parroquia de un barrio, decidida por SU centro y no por la de su
+   * plataforma.
+   *
+   * Parece lo mismo y no lo es: cinco barrios de Lizarzaburu cuelgan de una
+   * plataforma que pertenece a otra parroquia. Yendo por la plataforma, el
+   * desplegable ofrecía 102 barrios mientras la cifra de al lado decía 107.
+   * Dos números para la misma pregunta, y ninguno explicaba al otro.
+   */
+  abuelo?: string;
 }
 
 const piezasDeRasgo = (f: GeoJSON.Feature): Anillo[][] =>
@@ -86,11 +103,41 @@ const haDe = (piezas: Anillo[][]): number =>
  * orden, se prefiere no decir una población a decir la del barrio de al lado.
  */
 export function ambitosDe(
+  parroquias: Capa | null,
   plataformas: Capa | null,
   barrios: Capa | null,
   poblacion: Poblacion | null,
 ): Ambito[] {
   const salida: Ambito[] = [];
+
+  /*
+   * Las parroquias, el nivel de arriba.
+   *
+   * Van primero porque las plataformas necesitan saber de cuál cuelgan, y eso
+   * se decide buscándolas entre las que ya están en la lista.
+   *
+   * Su población y sus viviendas se suman de las plataformas que contienen y
+   * no se leen de ningún agregado propio: el censo que se publica viene por
+   * plataforma y por barrio, y repartir al revés —de la parroquia hacia
+   * abajo— sería inventarse un reparto.
+   */
+  if (parroquias) {
+    parroquias.geo.features.forEach((f, i) => {
+      const piezas = piezasDeRasgo(f);
+      if (piezas.length === 0) return;
+      const nombre = texto(f.properties?.nombre) || `Parroquia ${i + 1}`;
+      salida.push({
+        clave: `parroquia:${texto(f.properties?.clave) || i}`,
+        titulo: nombre,
+        nivel: "parroquia",
+        piezas,
+        caja: cajaDe(piezas.flat()),
+        pob: null,
+        viv: null,
+        ha: haDe(piezas),
+      });
+    });
+  }
 
   if (plataformas) {
     const todas = plataformas.geo.features.flatMap(piezasDeRasgo);
@@ -117,6 +164,12 @@ export function ambitosDe(
       if (piezas.length === 0) return;
       const clave = texto(f.properties?.clave);
       const dato = poblacion?.plataformas[clave] ?? null;
+      // De qué parroquia es, por su centro. Está comprobado contra los datos
+      // publicados: las 18 caen dentro de una de las cinco, ninguna huérfana.
+      const padre = padreDe(
+        f,
+        salida.filter((a) => a.nivel === "parroquia"),
+      );
       salida.push({
         clave: `plataforma:${clave}`,
         titulo: `Plataforma ${clave}`,
@@ -126,6 +179,7 @@ export function ambitosDe(
         pob: dato?.pob ?? null,
         viv: dato?.viv ?? null,
         ha: haDe(piezas),
+        padre,
       });
     });
   }
@@ -142,11 +196,16 @@ export function ambitosDe(
         dato.nombre.trim().toUpperCase() === nombre.trim().toUpperCase();
       // De qué plataforma es, por su centro: el mismo criterio con el que se
       // cuentan los barrios de una plataforma en las cifras.
-      const c = centroDe(f);
-      const padre = c
-        ? salida.find((a) => a.nivel === "plataforma" && dentro(a, c[0], c[1]))
-            ?.clave
-        : undefined;
+      const padre = padreDe(
+        f,
+        salida.filter((a) => a.nivel === "plataforma"),
+      );
+      // Y su parroquia por sí mismo, no por la de su plataforma: cinco
+      // barrios de Lizarzaburu cuelgan de una plataforma de otra parroquia.
+      const abuelo = padreDe(
+        f,
+        salida.filter((a) => a.nivel === "parroquia"),
+      );
       salida.push({
         clave: `barrio:${i}`,
         titulo: nombre,
@@ -157,6 +216,7 @@ export function ambitosDe(
         viv: cuadra ? dato.viv : null,
         ha: haDe(piezas),
         padre,
+        abuelo,
       });
     });
   }
@@ -164,31 +224,63 @@ export function ambitosDe(
   return salida;
 }
 
+/**
+ * A qué ámbito pertenece un rasgo, de entre los candidatos.
+ *
+ * Primero por su centro, que es lo correcto casi siempre. Y si ese centro no
+ * cae en ninguno —pasa con las formas cóncavas, donde la media de los
+ * vértices se sale de la propia pieza—, vale con que caiga uno de sus
+ * vértices: sin ese resguardo, Yaruquíes se quedaba con cero plataformas y
+ * tres barrios no pertenecían a ninguna parroquia.
+ */
+function padreDe(f: GeoJSON.Feature, candidatos: Ambito[]): string | undefined {
+  const g = f.geometry;
+  if (!g || candidatos.length === 0) return undefined;
+
+  /*
+   * Gana el que se queda con MÁS superficie del rasgo.
+   *
+   * Es la única regla que resiste. Por el centro se pierden las formas
+   * cóncavas, donde la media de los vértices se sale de la propia pieza. Por
+   * el primer vértice que acierte gana tantas veces el vecino como el dueño,
+   * porque el límite es común. Y contando vértices gana el lado que esté más
+   * finamente dibujado: con esa regla, la plataforma N —68 % de Yaruquíes y
+   * 16 % de Veloz— acababa contada en Veloz.
+   *
+   * Se mide con las mismas herramientas que los geoprocesos, en un plano
+   * métrico local, así que no hace falta nada nuevo.
+   */
+  const caja = cajaDe(piezasDeRasgo(f).flat());
+  const comoArea = (a: Ambito): GeoJSON.Geometry => ({
+    type: "MultiPolygon",
+    coordinates: a.piezas as number[][][][],
+  });
+  const plano = planoDe([g, ...candidatos.map(comoArea)]);
+  const mio = aMulti(g);
+
+  let mejor: string | undefined;
+  let mayor = 0;
+  for (const a of candidatos) {
+    // Descarte por caja: lo caro es cortar polígonos y casi ninguno se toca.
+    const [o, s, e, n] = a.caja;
+    if (caja[2] < o || caja[0] > e || caja[3] < s || caja[1] > n) continue;
+    const trozos = intersecar(mio, aMulti(comoArea(a)), plano) ?? [];
+    const area = trozos.reduce(
+      (acc, poly) =>
+        acc + areaM2({ type: "Polygon", coordinates: poly as number[][][] }),
+      0,
+    );
+    if (area > mayor) {
+      mejor = a.clave;
+      mayor = area;
+    }
+  }
+  return mejor;
+}
+
 /** Cierto si el punto cae en el ámbito. */
 const dentro = (a: Ambito, lon: number, lat: number) =>
   a.piezas.some((p) => enPoligono(lon, lat, p));
-
-/**
- * El centro de un área, que es por donde se decide a qué ámbito pertenece.
- *
- * Está aquí fuera a propósito: lo usan las cifras y el recorte del mapa, y
- * **tienen que decidir igual**. Si se separaran, el mapa enseñaría un barrio
- * que la cuenta no cuenta y no habría manera de saber cuál de los dos miente.
- */
-function centroDe(f: GeoJSON.Feature): [number, number] | null {
-  const anillo = piezasDeRasgo(f)[0]?.[0];
-  if (!anillo?.length) return null;
-  // El último punto repite el primero: contarlo correría el centro.
-  const n = anillo.length - 1;
-  if (n <= 0) return null;
-  let x = 0;
-  let y = 0;
-  for (let i = 0; i < n; i++) {
-    x += anillo[i][0];
-    y += anillo[i][1];
-  }
-  return [x / n, y / n];
-}
 
 /**
  * Las cifras de un ámbito, listas para la franja.
@@ -199,7 +291,7 @@ function centroDe(f: GeoJSON.Feature): [number, number] | null {
 export function leerAmbito(
   a: Ambito,
   equipamientos: Capa | null,
-  barrios: Capa | null,
+  ambitos: Ambito[],
 ): { cifras: Fila[]; tipos: Fila[] } {
   const ha = a.ha;
 
@@ -219,13 +311,23 @@ export function leerAmbito(
   if (a.viv !== null)
     cifras.push({ etiqueta: "Viviendas", valor: numero(a.viv) });
 
-  if (barrios && a.nivel !== "barrio") {
-    let cuantos = 0;
-    for (const f of barrios.geo.features) {
-      const c = centroDe(f);
-      if (c && dentro(a, c[0], c[1])) cuantos++;
+  /*
+   * Los barrios se cuentan de la lista de ámbitos, no volviendo a mirar la
+   * capa.
+   *
+   * Así la cifra y el desplegable no pueden discrepar: son el mismo reparto.
+   * Cuando eran dos cuentas separadas, el desplegable ofrecía 102 barrios de
+   * Lizarzaburu y la cifra de al lado decía 107, y ninguno de los dos números
+   * explicaba al otro.
+   */
+  if (a.nivel !== "barrio") {
+    const cuantos = ambitos.filter(
+      (x) =>
+        x.nivel === "barrio" && (x.padre === a.clave || x.abuelo === a.clave),
+    ).length;
+    if (cuantos > 0 || a.nivel !== "urbano") {
+      cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
     }
-    cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
   }
 
   const tipos: Fila[] = [];
@@ -263,6 +365,7 @@ export function leerAmbito(
 
 /** Las tres capas de Mirar, cada una con la que toca. */
 export interface CapasMirar {
+  parroquias: Capa | null;
   plataformas: Capa | null;
   barrios: Capa | null;
   equipamientos: Capa | null;
@@ -651,6 +754,8 @@ export const temaDeTipos = (): Tema => ({
 
 /** Las capas que el modo Mirar necesita tener cargadas. */
 export const CAPAS_MIRAR = [
+  // Las parroquias primero: son el nivel de arriba del filtro.
+  { archivo: "parroquias.geojson", nombre: "Parroquias" },
   { archivo: "plataformas.geojson", nombre: "Plataformas" },
   { archivo: "barrios.geojson", nombre: "Barrios" },
   { archivo: "equipamientos.geojson", nombre: "Equipamientos" },

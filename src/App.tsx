@@ -807,6 +807,7 @@ export default function App() {
   );
   const capasMirar = useMemo(
     () => ({
+      parroquias: porNombre("Parroquias"),
       plataformas: porNombre("Plataformas"),
       barrios: porNombre("Barrios"),
       equipamientos: porNombre("Equipamientos"),
@@ -825,8 +826,19 @@ export default function App() {
   }, [modo, poblacion]);
 
   const ambitos = useMemo(
-    () => ambitosDe(capasMirar.plataformas, capasMirar.barrios, poblacion),
-    [capasMirar.plataformas, capasMirar.barrios, poblacion],
+    () =>
+      ambitosDe(
+        capasMirar.parroquias,
+        capasMirar.plataformas,
+        capasMirar.barrios,
+        poblacion,
+      ),
+    [
+      capasMirar.parroquias,
+      capasMirar.plataformas,
+      capasMirar.barrios,
+      poblacion,
+    ],
   );
   const ambito = useMemo(
     () => ambitos.find((a) => a.clave === ambitoElegido) ?? ambitos[0] ?? null,
@@ -835,9 +847,9 @@ export default function App() {
   const lectura = useMemo(
     () =>
       ambito
-        ? leerAmbito(ambito, capasMirar.equipamientos, capasMirar.barrios)
+        ? leerAmbito(ambito, capasMirar.equipamientos, ambitos)
         : { cifras: [], tipos: [] },
-    [ambito, capasMirar.equipamientos, capasMirar.barrios],
+    [ambito, capasMirar.equipamientos, ambitos],
   );
 
   /*
