@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Mapa, { type Captura } from "./components/Mapa";
 import PanelCapas from "./components/PanelCapas";
 import PanelFlujo from "./components/PanelFlujo";
+import Constructor from "./components/Constructor";
 import {
   correrFlujo,
   valoresIniciales,
@@ -378,6 +379,7 @@ export default function App() {
    */
   const [pasos, setPasos] = useState<Paso[]>([]);
   const [marchas, setMarchas] = useState<Marcha[]>([]);
+  const [constructorAbierto, setConstructorAbierto] = useState(false);
 
   const correrElFlujo = useCallback(() => {
     if (pasos.length === 0) return;
@@ -1170,6 +1172,7 @@ export default function App() {
                       corriendo={calculando}
                       onCorrer={correrElFlujo}
                       onGuardar={guardarDeFlujo}
+                      onConstructor={() => setConstructorAbierto(true)}
                     />
                   )}
                 </>
@@ -1230,16 +1233,35 @@ export default function App() {
             </div>
           </aside>
 
-          <main className="min-w-0 flex-1">
-            <Mapa
-              capas={dibujo.capas}
-              referencia={referencia}
-              puntos={puntos}
-              ambito={ultimo?.ambito ?? null}
-              mapaBase={mapaBase}
-              onMapaBase={setMapaBase}
-              encuadre={encuadre}
-              capturaRef={capturaRef}
+          {/*
+            El mapa y, debajo, el constructor.
+            Se despliega sobre el mapa en vez de abrirse en otra pantalla:
+            el modelo habla de unas capas que están ahí detrás, y cambiar de
+            pantalla para armarlo obliga a recordar lo que se acaba de ver.
+          */}
+          <main className="flex min-w-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1">
+              <Mapa
+                capas={dibujo.capas}
+                referencia={referencia}
+                puntos={puntos}
+                ambito={ultimo?.ambito ?? null}
+                mapaBase={mapaBase}
+                onMapaBase={setMapaBase}
+                encuadre={encuadre}
+                capturaRef={capturaRef}
+              />
+            </div>
+            <Constructor
+              abierto={constructorAbierto}
+              onCerrar={() => setConstructorAbierto(false)}
+              capas={capas}
+              pasos={pasos}
+              onPasos={setPasos}
+              marchas={marchas}
+              corriendo={calculando}
+              onCorrer={correrElFlujo}
+              onGuardar={guardarDeFlujo}
             />
           </main>
         </div>

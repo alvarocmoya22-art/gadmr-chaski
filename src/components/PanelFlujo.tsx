@@ -44,6 +44,8 @@ interface Props {
   onCorrer: () => void;
   /** Guarda en la mesa la capa que dejó un paso. */
   onGuardar: (capa: Capa) => void;
+  /** Abre el lienzo de abajo, que es donde se arma de verdad. */
+  onConstructor: () => void;
 }
 
 export default function PanelFlujo({
@@ -54,6 +56,7 @@ export default function PanelFlujo({
   corriendo,
   onCorrer,
   onGuardar,
+  onConstructor,
 }: Props) {
   const [abierto, setAbierto] = useState<string | null>(null);
   const [anadiendo, setAnadiendo] = useState(false);
@@ -124,11 +127,21 @@ export default function PanelFlujo({
         corre entero y se puede volver a correr cuando cambien los datos.
       </p>
 
+      {/* La lista de aquí sirve para mirar y retocar; para armar —y sobre todo
+          para ver las ramas— está el lienzo de abajo. */}
+      <button
+        type="button"
+        onClick={onConstructor}
+        className="w-full rounded border border-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-[var(--gr-azul-500)] hover:bg-[var(--gr-azul-100)]"
+      >
+        Abrir el constructor ▾
+      </button>
+
       <ol className="space-y-1.5">
         {pasos.map((paso, i) => {
           const h = herramientaDe(paso.herramienta);
           const m = marchaDe(paso.id);
-          const falta = queFaltaEn(paso, i, pasos, capas);
+          const falta = queFaltaEn(paso, pasos, capas);
           const entrada = entradaDe(paso, capas, hechos);
           const estaAbierto = abierto === paso.id;
           const borde =

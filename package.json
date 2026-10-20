@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@types/d3-contour": "^3.0.6",
+    "@xyflow/react": "^12.12.0",
     "d3-contour": "^4.0.2",
     "maplibre-gl": "^5.24.0",
     "polygon-clipping": "^0.15.7",

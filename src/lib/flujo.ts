@@ -10,11 +10,11 @@
  * Un flujo guarda esos pasos, los corre seguidos y se puede volver a correr
  * cuando los datos cambien.
  *
- * ES UNA CADENA, NO UN LIENZO. Los pasos van en fila y cada uno puede tomar
- * como entrada el resultado de cualquier paso anterior; no hay ramas que se
- * junten después. Con las dieciséis herramientas de aquí, la cadena cubre lo
- * que se hace de verdad, y se entiende leyéndola de arriba abajo, que es
- * justo lo que un lienzo con flechas cruzadas deja de ofrecer.
+ * El orden lo marcan las DEPENDENCIAS, no la posición en la lista ni en el
+ * lienzo. Un paso corre cuando los pasos de los que bebe ya corrieron, así
+ * que se puede colocar los nodos donde se quiera y ramificar: dos pasos
+ * pueden beber del mismo resultado y un tercero juntar los dos. Lo único que
+ * no se admite es un círculo, y se dice cuál.
  */
 import type { Capa } from "./cargar";
 import { HERRAMIENTAS, type Herramienta } from "./herramientas";
@@ -33,6 +33,14 @@ export interface Paso {
    */
   entrada: string;
   valores: Record<string, string>;
+  /**
+   * Dónde está el nodo en el lienzo del constructor.
+   *
+   * Se guarda con el paso porque la colocación es parte del modelo: al
+   * volver, los nodos tienen que estar donde uno los dejó o hay que releer
+   * el flujo entero para reconocerlo.
+   */
+  posicion?: { x: number; y: number };
 }
 
 export const REF_PASO = "paso:";
@@ -95,7 +103,6 @@ export function entradaDe(
 /** Lo que falta para que un paso pueda correr, dicho en una línea. */
 export function queFaltaEn(
   paso: Paso,
-  indice: number,
   pasos: Paso[],
   capas: Capa[],
 ): string | null {
@@ -106,12 +113,11 @@ export function queFaltaEn(
 
   if (esRefPaso(paso.entrada)) {
     const id = refAPaso(paso.entrada);
-    const antes = pasos.slice(0, indice).some((p) => p.id === id);
-    // Un paso solo puede beber de los que corren ANTES que él. Sin esto, mover
-    // un paso hacia arriba dejaría la cadena apuntando hacia adelante y el
-    // flujo fallaría a la mitad en vez de avisar al escribirlo.
-    if (!antes)
-      return "Toma el resultado de un paso que va después, o que ya no está.";
+    if (!pasos.some((p) => p.id === id)) {
+      return "Toma el resultado de un paso que ya no está.";
+    }
+    // Que forme parte de un círculo lo dice `ordenDe` al repartir el orden:
+    // aquí solo se comprueba que lo que señala exista.
     return null;
   }
 
@@ -134,25 +140,92 @@ export function queFaltaEn(
  * flujo de cinco pasos deja cinco capas intermedias, y meterlas todas en la
  * mesa cada vez que se corre la llenaría de resultados que nadie pidió.
  */
+/** De qué pasos bebe este: su entrada y los parámetros que apuntan a otro. */
+export function dependenciasDe(paso: Paso): string[] {
+  const refs = [paso.entrada, ...Object.values(paso.valores)]
+    .filter(esRefPaso)
+    .map(refAPaso);
+  return [...new Set(refs)];
+}
+
+/**
+ * El orden en que hay que correr los pasos.
+ *
+ * Un paso va después de aquellos de los que bebe, y da igual dónde esté en la
+ * lista o en el lienzo. Lo que queda fuera del orden está en un círculo —A
+ * bebe de B y B de A— y se devuelve aparte para poder decirlo en vez de
+ * colgarse dando vueltas.
+ */
+export function ordenDe(pasos: Paso[]): { orden: Paso[]; enCirculo: string[] } {
+  const porId = new Map(pasos.map((p) => [p.id, p]));
+  const pendientes = new Map(
+    pasos.map((p) => [p.id, dependenciasDe(p).filter((d) => porId.has(d))]),
+  );
+  const orden: Paso[] = [];
+  let hubo = true;
+  while (hubo) {
+    hubo = false;
+    for (const [id, deps] of pendientes) {
+      if (deps.some((d) => pendientes.has(d))) continue;
+      orden.push(porId.get(id)!);
+      pendientes.delete(id);
+      hubo = true;
+    }
+  }
+  return { orden, enCirculo: [...pendientes.keys()] };
+}
+
+/**
+ * Corre el flujo entero, en orden de dependencias.
+ *
+ * Un paso cuyo origen fallo no se intenta: se marca «sin correr», porque no
+ * es que este mal, es que nunca le llego nada. Y lo que no dependa de la rama
+ * rota sigue corriendo, que es la ventaja de ordenar por dependencias y no
+ * por posicion.
+ *
+ * No toca la mesa: devuelve las capas y quien llama decide cuáles guarda. Un
+ * flujo de cinco pasos deja cinco capas intermedias, y meterlas todas en la
+ * mesa cada vez que se corre la llenaría de resultados que nadie pidió.
+ */
 export function correrFlujo(
   pasos: Paso[],
   capas: Capa[],
 ): { marchas: Marcha[]; hechos: Map<string, Capa> } {
+  const { orden, enCirculo } = ordenDe(pasos);
   const marchas: Marcha[] = [];
   const hechos = new Map<string, Capa>();
-  let roto = false;
+  const rotos = new Set<string>();
 
-  for (let i = 0; i < pasos.length; i++) {
-    const paso = pasos[i];
-    if (roto) {
+  for (const id of enCirculo) {
+    marchas.push({
+      paso: id,
+      estado: "mal",
+      /*
+       * El mismo texto para los del círculo y para los que cuelgan de él.
+       *
+       * El reparto deja fuera del orden tanto a los que se muerden la cola
+       * como a los que dependen de ellos, y distinguirlos costaría recorrer
+       * el grafo otra vez para decir casi lo mismo. Lo que importa es que
+       * ninguno puede correr, y por qué.
+       */
+      error:
+        "No corre: está en un círculo o depende de uno. Un paso no puede acabar bebiendo de sí mismo.",
+    });
+    rotos.add(id);
+  }
+
+  for (const paso of orden) {
+    const deps = dependenciasDe(paso);
+    if (deps.some((d) => rotos.has(d))) {
       marchas.push({ paso: paso.id, estado: "sin correr" });
+      rotos.add(paso.id);
       continue;
     }
 
-    const falta = queFaltaEn(paso, i, pasos, capas);
+    const falta = queFaltaEn(paso, pasos, capas);
     if (falta) {
       marchas.push({ paso: paso.id, estado: "mal", error: falta });
-      roto = true;
+      rotos.add(paso.id);
       continue;
     }
 
@@ -164,7 +237,7 @@ export function correrFlujo(
         estado: "mal",
         error: "El paso del que toma la capa no dejó resultado.",
       });
-      roto = true;
+      rotos.add(paso.id);
       continue;
     }
     if (!h.acepta.includes(entrada.forma)) {
@@ -173,7 +246,7 @@ export function correrFlujo(
         estado: "mal",
         error: `Le llega una capa de ${entrada.forma === "punto" ? "puntos" : entrada.forma === "linea" ? "líneas" : "áreas"} y «${h.nombre}» no las acepta.`,
       });
-      roto = true;
+      rotos.add(paso.id);
       continue;
     }
 
@@ -197,7 +270,7 @@ export function correrFlujo(
     const salida = h.correr({ capa: entrada, valores, capas: aMano });
     if ("error" in salida) {
       marchas.push({ paso: paso.id, estado: "mal", error: salida.error });
-      roto = true;
+      rotos.add(paso.id);
       continue;
     }
 
