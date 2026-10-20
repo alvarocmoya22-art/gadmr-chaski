@@ -652,6 +652,26 @@ export default function Mapa({
     const m = mapa.current;
     if (!m || !listo || !encuadre) return;
     const [oeste, sur, este, norte] = encuadre;
+
+    /*
+     * Un encuadre imposible no encuadra nada, y tumba la aplicación entera.
+     *
+     * En el catastro hay predios con coordenadas fuera de rango —latitudes
+     * que no existen—, y la caja que sale de ellos hace que `fitBounds`
+     * lance. Al lanzar dentro del render, React se cae con ella y lo que
+     * queda es una pantalla negra, sin mensaje y sin pista: la capa se
+     * cargaba bien y la aplicación desaparecía.
+     *
+     * El dato malo se avisa al cargar; aquí lo único que toca es no
+     * encuadrar y dejar el mapa donde estaba.
+     */
+    const posible =
+      [oeste, este].every((v) => Number.isFinite(v) && Math.abs(v) <= 180) &&
+      [sur, norte].every((v) => Number.isFinite(v) && Math.abs(v) <= 90) &&
+      oeste <= este &&
+      sur <= norte;
+    if (!posible) return;
+
     m.fitBounds([oeste, sur, este, norte], {
       padding: 60,
       duration: 700,

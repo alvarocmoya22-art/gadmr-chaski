@@ -269,7 +269,30 @@ export default function App() {
       if (nuevas.length === 0) return;
       setCapas((previas) => [...previas, ...nuevas]);
       const caja = cajaDeCapa(nuevas[0]);
-      if (caja) setEncuadre(caja);
+      /*
+       * Una caja imposible no se usa, y se dice.
+       *
+       * El catastro trae predios con coordenadas fuera de rango. Antes, la
+       * caja que salía de ellos hacía estallar el encuadre del mapa y con él
+       * la aplicación entera: pantalla negra, sin mensaje. Ahora no se
+       * encuadra y se avisa de que esa capa tiene geometría mal ubicada, que
+       * es un problema del dato y conviene mirarlo en la base.
+       */
+      const cajaPosible =
+        caja !== null &&
+        Math.abs(caja[0]) <= 180 &&
+        Math.abs(caja[2]) <= 180 &&
+        Math.abs(caja[1]) <= 90 &&
+        Math.abs(caja[3]) <= 90;
+      if (caja && cajaPosible) setEncuadre(caja);
+      if (caja && !cajaPosible) {
+        setRecados([
+          {
+            texto: `«${nuevas[0].nombre}» trae alguna geometría con coordenadas imposibles, así que no se encuadra sola. Lo demás se dibuja; esa pieza está mal en la base.`,
+            mal: true,
+          },
+        ]);
+      }
       if (!capaId) {
         setCapaId(nuevas[0].id);
         const primera = herramientasPara(nuevas[0])[0]?.clave ?? null;
@@ -709,6 +732,7 @@ export default function App() {
           cortada,
           total,
           sinGeometria,
+          ilegibles,
         } = await traerColeccion(
           baseUrl,
           c,
@@ -720,10 +744,14 @@ export default function App() {
         );
         recibir([nueva]);
         setAvanceBase(null);
-        setRecados([
+        // Se añade, no se reemplaza: `recibir` puede haber dejado su propio
+        // aviso —una geometría mal ubicada, por ejemplo— y reemplazar lo
+        // borraba justo cuando hacía falta leerlo.
+        setRecados((previos) => [
+          ...previos,
           {
             texto: cortada
-              ? `${nueva.nombre}: se trajeron los primeros ${numero(nueva.geo.features.length)} de ${total ? numero(total) : "muchos"} registros.`
+              ? `${nueva.nombre}: se trajeron los primeros ${numero(nueva.geo.features.length)}${total ? ` de ${numero(total)}` : ""} registros; la tabla tiene más. El tope está puesto para que el navegador aguante.`
               : // Las filas sin geometría se descartan al dibujar. Decirlo:
                 // una capa que calla lo que se dejó por el camino es
                 // exactamente lo que hacía que los ejes viales salieran a
@@ -731,6 +759,11 @@ export default function App() {
                 `${nueva.nombre}: ${numero(nueva.geo.features.length)} registros de la base.` +
                 (sinGeometria > 0
                   ? ` ${numero(sinGeometria)} ${sinGeometria === 1 ? "fila venía" : "filas venían"} sin geometría y no se ${sinGeometria === 1 ? "dibuja" : "dibujan"}.`
+                  : "") +
+                // Y las que el servicio no supo entregar: la capa llega
+                // completa menos esas, y conviene saber cuántas son.
+                (ilegibles > 0
+                  ? ` ${numero(ilegibles)} ${ilegibles === 1 ? "fila tiene" : "filas tienen"} una geometría que el servicio no pudo entregar y ${ilegibles === 1 ? "quedó" : "quedaron"} fuera.`
                   : ""),
             mal: false,
           },
