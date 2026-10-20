@@ -12,7 +12,14 @@
  * mismo, obliga a arrastrar la zona por todas partes y se rompe en cuanto
  * alguien cargue una capa de otra provincia.
  */
-import { cajaDe, enCaja, enPoligono, poligonosDe, type Anillo, type Caja } from './geo'
+import {
+  cajaDe,
+  enCaja,
+  enPoligono,
+  poligonosDe,
+  type Anillo,
+  type Caja,
+} from "./geo";
 
 /*
  * WGS84. Medir sobre una esfera de radio medio es la salida fácil y aquí no
@@ -23,12 +30,12 @@ import { cajaDe, enCaja, enPoligono, poligonosDe, type Anillo, type Caja } from 
  * informe. Las dos funciones de abajo están comprobadas contra pyproj y
  * coinciden hasta la cuarta cifra decimal del porcentaje.
  */
-const SEMIEJE_M = 6378137
-const APLANAMIENTO = 1 / 298.257223563
-const E2 = APLANAMIENTO * (2 - APLANAMIENTO)
-const E = Math.sqrt(E2)
+const SEMIEJE_M = 6378137;
+const APLANAMIENTO = 1 / 298.257223563;
+const E2 = APLANAMIENTO * (2 - APLANAMIENTO);
+const E = Math.sqrt(E2);
 
-const rad = (g: number) => (g * Math.PI) / 180
+const rad = (g: number) => (g * Math.PI) / 180;
 
 /**
  * Latitud autálica: la que hay que usar para medir superficie sobre la esfera.
@@ -38,15 +45,19 @@ const rad = (g: number) => (g * Math.PI) / 180
  * deja de ser una aproximación y pasa a dar el área elipsoidal.
  */
 function q(phi: number): number {
-  const s = Math.sin(phi)
-  return (1 - E2) * (s / (1 - E2 * s * s) - (1 / (2 * E)) * Math.log((1 - E * s) / (1 + E * s)))
+  const s = Math.sin(phi);
+  return (
+    (1 - E2) *
+    (s / (1 - E2 * s * s) - (1 / (2 * E)) * Math.log((1 - E * s) / (1 + E * s)))
+  );
 }
 
-const QP = q(Math.PI / 2)
+const QP = q(Math.PI / 2);
 /** Radio de la esfera que tiene la misma superficie que el elipsoide. */
-const RADIO_AUTALICO = SEMIEJE_M * Math.sqrt(QP / 2)
+const RADIO_AUTALICO = SEMIEJE_M * Math.sqrt(QP / 2);
 
-const senoAutalico = (latGrados: number) => Math.max(-1, Math.min(1, q(rad(latGrados)) / QP))
+const senoAutalico = (latGrados: number) =>
+  Math.max(-1, Math.min(1, q(rad(latGrados)) / QP));
 
 /**
  * Superficie de un anillo, con signo.
@@ -55,15 +66,15 @@ const senoAutalico = (latGrados: number) => Math.max(-1, Math.min(1, q(rad(latGr
  * restar los agujeros sin tener que comprobar cuál está dentro de cuál.
  */
 function areaAnillo(anillo: Anillo): number {
-  const n = anillo.length
-  if (n < 4) return 0
-  let total = 0
+  const n = anillo.length;
+  if (n < 4) return 0;
+  let total = 0;
   for (let i = 0; i < n - 1; i++) {
-    const [lon1, lat1] = anillo[i]
-    const [lon2, lat2] = anillo[i + 1]
-    total += rad(lon2 - lon1) * (2 + senoAutalico(lat1) + senoAutalico(lat2))
+    const [lon1, lat1] = anillo[i];
+    const [lon2, lat2] = anillo[i + 1];
+    total += rad(lon2 - lon1) * (2 + senoAutalico(lat1) + senoAutalico(lat2));
   }
-  return (total * RADIO_AUTALICO * RADIO_AUTALICO) / 2
+  return (total * RADIO_AUTALICO * RADIO_AUTALICO) / 2;
 }
 
 /**
@@ -84,58 +95,64 @@ export function distanciaGeo(
   lon2: number,
   lat2: number,
 ): number {
-  const phim = rad((lat1 + lat2) / 2)
-  const s = Math.sin(phim)
-  const w = 1 - E2 * s * s
-  const meridiano = (SEMIEJE_M * (1 - E2)) / Math.pow(w, 1.5)
-  const vertical = SEMIEJE_M / Math.sqrt(w)
-  const dy = meridiano * rad(lat2 - lat1)
-  const dx = vertical * Math.cos(phim) * rad(lon2 - lon1)
-  return Math.hypot(dx, dy)
+  const phim = rad((lat1 + lat2) / 2);
+  const s = Math.sin(phim);
+  const w = 1 - E2 * s * s;
+  const meridiano = (SEMIEJE_M * (1 - E2)) / Math.pow(w, 1.5);
+  const vertical = SEMIEJE_M / Math.sqrt(w);
+  const dy = meridiano * rad(lat2 - lat1);
+  const dx = vertical * Math.cos(phim) * rad(lon2 - lon1);
+  return Math.hypot(dx, dy);
 }
 
 /** Metros cuadrados de una geometría; lo que no sea polígono mide cero. */
 export function areaM2(g: GeoJSON.Geometry | null | undefined): number {
-  if (!g) return 0
-  let total = 0
+  if (!g) return 0;
+  let total = 0;
   for (const poligono of poligonosDe(g)) {
     // El primero es el contorno y los demás son huecos: patios interiores,
     // islas de otro uso, una laguna dentro del predio.
-    total += Math.abs(areaAnillo(poligono[0] ?? []))
-    for (const hueco of poligono.slice(1)) total -= Math.abs(areaAnillo(hueco))
+    total += Math.abs(areaAnillo(poligono[0] ?? []));
+    for (const hueco of poligono.slice(1)) total -= Math.abs(areaAnillo(hueco));
   }
-  return Math.max(0, total)
+  return Math.max(0, total);
 }
 
-export const areaHa = (g: GeoJSON.Geometry | null | undefined) => areaM2(g) / 10000
+export const areaHa = (g: GeoJSON.Geometry | null | undefined) =>
+  areaM2(g) / 10000;
 
 /** Todas las sartas de puntos de una geometría lineal. */
 function sartas(g: GeoJSON.Geometry): Anillo[] {
-  if (g.type === 'LineString') return [g.coordinates as Anillo]
-  if (g.type === 'MultiLineString') return g.coordinates as Anillo[]
-  return []
+  if (g.type === "LineString") return [g.coordinates as Anillo];
+  if (g.type === "MultiLineString") return g.coordinates as Anillo[];
+  return [];
 }
 
 /** Metros de una geometría lineal; lo que no sea línea mide cero. */
 export function longitudM(g: GeoJSON.Geometry | null | undefined): number {
-  if (!g) return 0
-  let total = 0
+  if (!g) return 0;
+  let total = 0;
   for (const sarta of sartas(g)) {
     for (let i = 0; i < sarta.length - 1; i++) {
-      total += distanciaGeo(sarta[i][0], sarta[i][1], sarta[i + 1][0], sarta[i + 1][1])
+      total += distanciaGeo(
+        sarta[i][0],
+        sarta[i][1],
+        sarta[i + 1][0],
+        sarta[i + 1][1],
+      );
     }
   }
-  return total
+  return total;
 }
 
 /** Una zona preparada para que preguntarle «¿cae esto dentro?» salga barato. */
 export interface Zona {
-  indice: number
-  poligonos: Anillo[][]
-  caja: Caja
-  props: Record<string, unknown>
-  geo: GeoJSON.Feature
-  areaM2: number
+  indice: number;
+  poligonos: Anillo[][];
+  caja: Caja;
+  props: Record<string, unknown>;
+  geo: GeoJSON.Feature;
+  areaM2: number;
 }
 
 /**
@@ -146,11 +163,11 @@ export interface Zona {
  * entre descartar por caja y entrar al polígono es de minutos a segundos.
  */
 export function prepararZonas(geo: GeoJSON.FeatureCollection): Zona[] {
-  const zonas: Zona[] = []
+  const zonas: Zona[] = [];
   geo.features.forEach((f, indice) => {
-    if (!f.geometry) return
-    const poligonos = poligonosDe(f.geometry)
-    if (poligonos.length === 0) return
+    if (!f.geometry) return;
+    const poligonos = poligonosDe(f.geometry);
+    if (poligonos.length === 0) return;
     zonas.push({
       indice,
       poligonos,
@@ -158,18 +175,18 @@ export function prepararZonas(geo: GeoJSON.FeatureCollection): Zona[] {
       props: (f.properties ?? {}) as Record<string, unknown>,
       geo: f,
       areaM2: areaM2(f.geometry),
-    })
-  })
-  return zonas
+    });
+  });
+  return zonas;
 }
 
 /** La zona que contiene el punto, o null si cae fuera de todas. */
 export function zonaDe(zonas: Zona[], lon: number, lat: number): Zona | null {
   for (const z of zonas) {
-    if (!enCaja(lon, lat, z.caja)) continue
-    if (z.poligonos.some((p) => enPoligono(lon, lat, p))) return z
+    if (!enCaja(lon, lat, z.caja)) continue;
+    if (z.poligonos.some((p) => enPoligono(lon, lat, p))) return z;
   }
-  return null
+  return null;
 }
 
 /**
@@ -182,41 +199,47 @@ export function zonaDe(zonas: Zona[], lon: number, lat: number): Zona | null {
  * debajo de lo que vale la pena discutir, y sin traer una biblioteca de
  * recorte topológico para esto.
  */
-export const PASO_TROCEO_M = 25
+export const PASO_TROCEO_M = 25;
 
 /** Reparte los metros de una geometría lineal entre las zonas. */
 export function longitudPorZona(
   g: GeoJSON.Geometry,
   zonas: Zona[],
 ): { porZona: Map<number, number>; fuera: number } {
-  const porZona = new Map<number, number>()
-  let fuera = 0
+  const porZona = new Map<number, number>();
+  let fuera = 0;
   for (const sarta of sartas(g)) {
     for (let i = 0; i < sarta.length - 1; i++) {
-      const [x1, y1] = sarta[i]
-      const [x2, y2] = sarta[i + 1]
-      const largo = distanciaGeo(x1, y1, x2, y2)
-      if (largo === 0) continue
-      const trozos = Math.max(1, Math.ceil(largo / PASO_TROCEO_M))
-      const cacho = largo / trozos
+      const [x1, y1] = sarta[i];
+      const [x2, y2] = sarta[i + 1];
+      const largo = distanciaGeo(x1, y1, x2, y2);
+      if (largo === 0) continue;
+      const trozos = Math.max(1, Math.ceil(largo / PASO_TROCEO_M));
+      const cacho = largo / trozos;
       for (let t = 0; t < trozos; t++) {
         // Punto medio del trocito: interpolación lineal en grados, que a esta
         // escala no se distingue de la geodésica.
-        const f = (t + 0.5) / trozos
-        const z = zonaDe(zonas, x1 + (x2 - x1) * f, y1 + (y2 - y1) * f)
+        const f = (t + 0.5) / trozos;
+        const z = zonaDe(zonas, x1 + (x2 - x1) * f, y1 + (y2 - y1) * f);
         if (!z) {
-          fuera += cacho
-          continue
+          fuera += cacho;
+          continue;
         }
-        porZona.set(z.indice, (porZona.get(z.indice) ?? 0) + cacho)
+        porZona.set(z.indice, (porZona.get(z.indice) ?? 0) + cacho);
       }
     }
   }
-  return { porZona, fuera }
+  return { porZona, fuera };
 }
 
 /** Rampa para los valores graduados: claro donde hay poco, oscuro donde mucho. */
-export const RAMPA_GRADUADA = ['#dce7f1', '#a9c6de', '#6f9ec6', '#3f76ad', '#1b4f82']
+export const RAMPA_GRADUADA = [
+  "#dce7f1",
+  "#a9c6de",
+  "#6f9ec6",
+  "#3f76ad",
+  "#1b4f82",
+];
 
 /**
  * Cómo se pinta una capa de resultado por uno de sus campos.
@@ -227,16 +250,31 @@ export const RAMPA_GRADUADA = ['#dce7f1', '#a9c6de', '#6f9ec6', '#3f76ad', '#1b4
  * color y su significado, así que se pinta por coincidencia.
  */
 export interface Tema {
-  campo: string
+  campo: string;
   /** Para la leyenda: qué mide el campo. */
-  unidad: string
+  unidad: string;
   /** Modo escala: hay un color más que cortes. */
-  cortes?: number[]
-  colores?: string[]
-  /** Modo coincidencia: un color por valor exacto. */
-  coincidencias?: { valor: number; color: string; rotulo: string }[]
+  cortes?: number[];
+  colores?: string[];
+  /**
+   * Modo coincidencia: un color por valor exacto.
+   *
+   * El valor puede ser texto: así vale tanto para los grados de un hotspot
+   * —números— como para una clasificación por categorías, que es lo que trae
+   * casi cualquier capa municipal.
+   */
+  coincidencias?: { valor: number | string; color: string; rotulo: string }[];
+  /**
+   * El color de lo que no casa con ningún valor.
+   *
+   * Sin esto queda transparente, que para una rejilla de análisis es correcto
+   * —no hay nada que decir de esa celda— pero para una categoría no: un punto
+   * de un tipo que no estaba en la lista se volvería invisible, y un punto que
+   * no se ve es un punto que no existe para quien mira el mapa.
+   */
+  respaldo?: string;
   /** Qué quiere decir que una pieza se quede sin color. */
-  notaVacio?: string
+  notaVacio?: string;
 }
 
 /**
@@ -248,19 +286,21 @@ export interface Tema {
  * cero se dibuja con el color más claro y se dice en la leyenda.
  */
 export function cortesCuantil(valores: number[], clases = 5): number[] {
-  const conDato = valores.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
-  if (conDato.length === 0) return []
-  const cortes: number[] = []
+  const conDato = valores
+    .filter((v) => Number.isFinite(v) && v > 0)
+    .sort((a, b) => a - b);
+  if (conDato.length === 0) return [];
+  const cortes: number[] = [];
   for (let i = 1; i < clases; i++) {
-    const pos = (conDato.length - 1) * (i / clases)
-    const bajo = Math.floor(pos)
-    const alto = Math.ceil(pos)
-    const v = conDato[bajo] + (conDato[alto] - conDato[bajo]) * (pos - bajo)
+    const pos = (conDato.length - 1) * (i / clases);
+    const bajo = Math.floor(pos);
+    const alto = Math.ceil(pos);
+    const v = conDato[bajo] + (conDato[alto] - conDato[bajo]) * (pos - bajo);
     // Cortes repetidos no separan nada: con pocos valores distintos salen
     // menos clases, y eso es lo honesto en vez de fingir cinco.
-    if (cortes.length === 0 || v > cortes[cortes.length - 1]) cortes.push(v)
+    if (cortes.length === 0 || v > cortes[cortes.length - 1]) cortes.push(v);
   }
-  return cortes
+  return cortes;
 }
 
 /**
@@ -272,7 +312,11 @@ export function cortesCuantil(valores: number[], clases = 5): number[] {
  * el mismo número sin que nadie lo hubiera previsto.
  */
 export function cifraLeyenda(n: number): string {
-  const magnitud = Math.abs(n)
-  const decimales = magnitud >= 100 ? 0 : magnitud >= 10 ? 1 : magnitud >= 1 ? 2 : 3
-  return n.toLocaleString('es-EC', { minimumFractionDigits: 0, maximumFractionDigits: decimales })
+  const magnitud = Math.abs(n);
+  const decimales =
+    magnitud >= 100 ? 0 : magnitud >= 10 ? 1 : magnitud >= 1 ? 2 : 3;
+  return n.toLocaleString("es-EC", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimales,
+  });
 }

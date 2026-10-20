@@ -611,3 +611,34 @@ body {
   .lamina { max-width: none; box-shadow: none; padding: 0; }
   .lamina-cuerpo { grid-template-columns: 1.3fr 1fr; }
 }
+
+/*
+ * La letra de cada plataforma en el mapa.
+ *
+ * Va como marcador de HTML y no como rotulo del estilo de MapLibre: poner
+ * texto en el mapa obliga a servir una fuente de glifos entera, y aqui son
+ * dieciocho letras.
+ */
+.chaski-marca {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 11px;
+  border: 1px solid var(--gr-azul-500);
+  background: var(--gr-superficie);
+  color: var(--gr-azul-500);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgb(15 25 34 / 30%);
+  cursor: default;
+}
+
+/* La elegida, invertida: a distancia se reconoce por la mancha, no por leerla. */
+.chaski-marca--activa {
+  background: var(--gr-azul-500);
+  border-color: var(--gr-azul-500);
+  color: #fff;
+}

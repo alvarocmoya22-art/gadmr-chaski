@@ -10,50 +10,72 @@
  * de población del Censo 2022 que también publica. Aquí no se recalcula nada
  * que el visor ya haya calculado: se lee lo suyo y se mide lo que haga falta.
  */
-import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from './geo'
-import { areaM2 } from './medidas'
-import { ORIGEN_VISOR } from './municipio'
-import { numero } from './format'
-import type { Capa, Fila } from './cargar'
+import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from "./geo";
+import { areaM2 } from "./medidas";
+import { ORIGEN_VISOR } from "./municipio";
+import { numero } from "./format";
+import type { Capa, Fila } from "./cargar";
+import type { Tema } from "./medidas";
 
 /** Lo que trae el agregado de población que publica el visor. */
 interface Poblacion {
-  fuente: string
-  barrios: Record<string, { nombre: string; pob: number; viv: number }>
-  plataformas: Record<string, { pob: number; viv: number }>
+  fuente: string;
+  barrios: Record<string, { nombre: string; pob: number; viv: number }>;
+  plataformas: Record<string, { pob: number; viv: number }>;
 }
 
-let cache: Poblacion | null = null
+let cache: Poblacion | null = null;
 
 /** El agregado de población, traído una sola vez. */
 export async function cargarPoblacion(): Promise<Poblacion | null> {
-  if (cache) return cache
+  if (cache) return cache;
   try {
-    const resp = await fetch(`${ORIGEN_VISOR}/poblacion.json`)
-    if (!resp.ok) return null
-    cache = (await resp.json()) as Poblacion
-    return cache
+    const resp = await fetch(`${ORIGEN_VISOR}/poblacion.json`);
+    if (!resp.ok) return null;
+    cache = (await resp.json()) as Poblacion;
+    return cache;
   } catch {
-    return null
+    return null;
   }
 }
 
 /** Una zona que se puede mirar: todo el urbano, una plataforma o un barrio. */
 export interface Ambito {
-  clave: string
-  titulo: string
+  clave: string;
+  titulo: string;
   /** De qué capa salió, para saber a qué nivel está. */
-  nivel: 'urbano' | 'plataforma' | 'barrio'
-  piezas: Anillo[][]
-  caja: Caja
-  pob: number | null
-  viv: number | null
+  nivel: "urbano" | "plataforma" | "barrio";
+  piezas: Anillo[][];
+  caja: Caja;
+  pob: number | null;
+  viv: number | null;
+  /** Superficie medida sobre el elipsoide, no la declarada en el shapefile. */
+  ha: number;
+  /**
+   * La plataforma que contiene este barrio, si se pudo decidir.
+   *
+   * Es lo que permite que el desplegable de barrios enseñe «los 24 de la
+   * plataforma C» en vez de los 212 de la ciudad seguidos. Los barrios que
+   * caen fuera de toda plataforma se quedan sin padre y solo aparecen con el
+   * ámbito urbano: no inventarles una es mejor que colgarlos de la vecina.
+   */
+  padre?: string;
 }
 
 const piezasDeRasgo = (f: GeoJSON.Feature): Anillo[][] =>
-  f.geometry ? poligonosDe(f.geometry) : []
+  f.geometry ? poligonosDe(f.geometry) : [];
 
-const texto = (v: unknown): string => (v === null || v === undefined ? '' : String(v))
+const texto = (v: unknown): string =>
+  v === null || v === undefined ? "" : String(v);
+
+/** Las hectáreas de un conjunto de piezas, sobre el elipsoide. */
+const haDe = (piezas: Anillo[][]): number =>
+  piezas.reduce(
+    (s, poly) =>
+      s +
+      areaM2({ type: "Polygon", coordinates: poly as number[][][] }) / 10000,
+    0,
+  );
 
 /**
  * Los ámbitos que se pueden elegir, a partir de las capas cargadas.
@@ -68,70 +90,83 @@ export function ambitosDe(
   barrios: Capa | null,
   poblacion: Poblacion | null,
 ): Ambito[] {
-  const salida: Ambito[] = []
+  const salida: Ambito[] = [];
 
   if (plataformas) {
-    const todas = plataformas.geo.features.flatMap(piezasDeRasgo)
+    const todas = plataformas.geo.features.flatMap(piezasDeRasgo);
     if (todas.length > 0) {
       const pob = poblacion
         ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.pob, 0)
-        : null
+        : null;
       const viv = poblacion
         ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.viv, 0)
-        : null
+        : null;
       salida.push({
-        clave: 'urbano',
-        titulo: 'Riobamba urbano · las 18 plataformas',
-        nivel: 'urbano',
+        clave: "urbano",
+        titulo: "Riobamba urbano · las 18 plataformas",
+        nivel: "urbano",
         piezas: todas,
         caja: cajaDe(todas.flat()),
         pob,
         viv,
-      })
+        ha: haDe(todas),
+      });
     }
     plataformas.geo.features.forEach((f) => {
-      const piezas = piezasDeRasgo(f)
-      if (piezas.length === 0) return
-      const clave = texto(f.properties?.clave)
-      const dato = poblacion?.plataformas[clave] ?? null
+      const piezas = piezasDeRasgo(f);
+      if (piezas.length === 0) return;
+      const clave = texto(f.properties?.clave);
+      const dato = poblacion?.plataformas[clave] ?? null;
       salida.push({
         clave: `plataforma:${clave}`,
         titulo: `Plataforma ${clave}`,
-        nivel: 'plataforma',
+        nivel: "plataforma",
         piezas,
         caja: cajaDe(piezas.flat()),
         pob: dato?.pob ?? null,
         viv: dato?.viv ?? null,
-      })
-    })
+        ha: haDe(piezas),
+      });
+    });
   }
 
   if (barrios) {
     barrios.geo.features.forEach((f, i) => {
-      const piezas = piezasDeRasgo(f)
-      if (piezas.length === 0) return
-      const nombre = texto(f.properties?.nombre) || `Barrio ${i + 1}`
-      const dato = poblacion?.barrios[String(i)] ?? null
+      const piezas = piezasDeRasgo(f);
+      if (piezas.length === 0) return;
+      const nombre = texto(f.properties?.nombre) || `Barrio ${i + 1}`;
+      const dato = poblacion?.barrios[String(i)] ?? null;
       // Solo se cree el dato si el nombre cuadra: el índice por sí solo no basta.
-      const cuadra = dato && dato.nombre.trim().toUpperCase() === nombre.trim().toUpperCase()
+      const cuadra =
+        dato &&
+        dato.nombre.trim().toUpperCase() === nombre.trim().toUpperCase();
+      // De qué plataforma es, por su centro: el mismo criterio con el que se
+      // cuentan los barrios de una plataforma en las cifras.
+      const c = centroDe(f);
+      const padre = c
+        ? salida.find((a) => a.nivel === "plataforma" && dentro(a, c[0], c[1]))
+            ?.clave
+        : undefined;
       salida.push({
         clave: `barrio:${i}`,
         titulo: nombre,
-        nivel: 'barrio',
+        nivel: "barrio",
         piezas,
         caja: cajaDe(piezas.flat()),
         pob: cuadra ? dato.pob : null,
         viv: cuadra ? dato.viv : null,
-      })
-    })
+        ha: haDe(piezas),
+        padre,
+      });
+    });
   }
 
-  return salida
+  return salida;
 }
 
 /** Cierto si el punto cae en el ámbito. */
 const dentro = (a: Ambito, lon: number, lat: number) =>
-  a.piezas.some((p) => enPoligono(lon, lat, p))
+  a.piezas.some((p) => enPoligono(lon, lat, p));
 
 /**
  * El centro de un área, que es por donde se decide a qué ámbito pertenece.
@@ -141,18 +176,18 @@ const dentro = (a: Ambito, lon: number, lat: number) =>
  * que la cuenta no cuenta y no habría manera de saber cuál de los dos miente.
  */
 function centroDe(f: GeoJSON.Feature): [number, number] | null {
-  const anillo = piezasDeRasgo(f)[0]?.[0]
-  if (!anillo?.length) return null
+  const anillo = piezasDeRasgo(f)[0]?.[0];
+  if (!anillo?.length) return null;
   // El último punto repite el primero: contarlo correría el centro.
-  const n = anillo.length - 1
-  if (n <= 0) return null
-  let x = 0
-  let y = 0
+  const n = anillo.length - 1;
+  if (n <= 0) return null;
+  let x = 0;
+  let y = 0;
   for (let i = 0; i < n; i++) {
-    x += anillo[i][0]
-    y += anillo[i][1]
+    x += anillo[i][0];
+    y += anillo[i][1];
   }
-  return [x / n, y / n]
+  return [x / n, y / n];
 }
 
 /**
@@ -166,77 +201,85 @@ export function leerAmbito(
   equipamientos: Capa | null,
   barrios: Capa | null,
 ): { cifras: Fila[]; tipos: Fila[] } {
-  const ha = a.piezas.reduce(
-    (s, poly) => s + areaM2({ type: 'Polygon', coordinates: poly as number[][][] }) / 10000,
-    0,
-  )
+  const ha = a.ha;
 
-  const cifras: Fila[] = [{ etiqueta: 'Superficie', valor: `${numero(Math.round(ha))} ha` }]
+  const cifras: Fila[] = [
+    { etiqueta: "Superficie", valor: `${numero(Math.round(ha))} ha` },
+  ];
   if (a.pob !== null) {
-    cifras.push({ etiqueta: 'Habitantes', valor: numero(a.pob) })
-    const km2 = ha / 100
+    cifras.push({ etiqueta: "Habitantes", valor: numero(a.pob) });
+    const km2 = ha / 100;
     if (km2 > 0) {
       cifras.push({
-        etiqueta: 'Densidad',
+        etiqueta: "Densidad",
         valor: `${numero(Math.round(a.pob / km2))} hab/km²`,
-      })
+      });
     }
   }
-  if (a.viv !== null) cifras.push({ etiqueta: 'Viviendas', valor: numero(a.viv) })
+  if (a.viv !== null)
+    cifras.push({ etiqueta: "Viviendas", valor: numero(a.viv) });
 
-  if (barrios && a.nivel !== 'barrio') {
-    let cuantos = 0
+  if (barrios && a.nivel !== "barrio") {
+    let cuantos = 0;
     for (const f of barrios.geo.features) {
-      const c = centroDe(f)
-      if (c && dentro(a, c[0], c[1])) cuantos++
+      const c = centroDe(f);
+      if (c && dentro(a, c[0], c[1])) cuantos++;
     }
-    cifras.push({ etiqueta: 'Barrios', valor: numero(cuantos) })
+    cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
   }
 
-  const tipos: Fila[] = []
+  const tipos: Fila[] = [];
   if (equipamientos) {
-    const cuenta = new Map<string, number>()
-    let total = 0
+    const cuenta = new Map<string, number>();
+    let total = 0;
     for (const f of equipamientos.geo.features) {
-      const g = f.geometry
-      if (!g || g.type !== 'Point') continue
-      const [lon, lat] = g.coordinates as [number, number]
-      if (!dentro(a, lon, lat)) continue
-      total++
-      const tipo = texto(f.properties?.tipo) || '—'
-      cuenta.set(tipo, (cuenta.get(tipo) ?? 0) + 1)
+      const g = f.geometry;
+      if (!g || g.type !== "Point") continue;
+      const [lon, lat] = g.coordinates as [number, number];
+      if (!dentro(a, lon, lat)) continue;
+      total++;
+      const tipo = texto(f.properties?.tipo) || "—";
+      cuenta.set(tipo, (cuenta.get(tipo) ?? 0) + 1);
     }
-    cifras.push({ etiqueta: 'Equipamientos', valor: numero(total) })
+    cifras.push({ etiqueta: "Equipamientos", valor: numero(total) });
     if (a.pob !== null && a.pob > 0) {
       cifras.push({
-        etiqueta: 'Por cada 1.000 hab',
-        valor: ((total / a.pob) * 1000).toFixed(1).replace('.', ','),
-      })
+        etiqueta: "Por cada 1.000 hab",
+        valor: ((total / a.pob) * 1000).toFixed(1).replace(".", ","),
+      });
     }
-    for (const [tipo, n] of [...cuenta.entries()].sort((x, y) => y[1] - x[1]).slice(0, 6)) {
+    for (const [tipo, n] of [...cuenta.entries()]
+      .sort((x, y) => y[1] - x[1])
+      .slice(0, 6)) {
       tipos.push({
         etiqueta: tipo,
         valor: `${numero(n)} · ${((n / Math.max(1, total)) * 100).toFixed(0)} %`,
-      })
+      });
     }
   }
 
-  return { cifras, tipos }
+  return { cifras, tipos };
 }
 
 /** Las tres capas de Mirar, cada una con la que toca. */
 export interface CapasMirar {
-  plataformas: Capa | null
-  barrios: Capa | null
-  equipamientos: Capa | null
+  plataformas: Capa | null;
+  barrios: Capa | null;
+  equipamientos: Capa | null;
 }
 
-const VACIA: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+const VACIA: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
 
-const soloCon = (capa: Capa, quedarse: (f: GeoJSON.Feature, i: number) => boolean) => ({
-  type: 'FeatureCollection' as const,
+const soloCon = (
+  capa: Capa,
+  quedarse: (f: GeoJSON.Feature, i: number) => boolean,
+) => ({
+  type: "FeatureCollection" as const,
   features: capa.geo.features.filter(quedarse),
-})
+});
 
 /**
  * Lo que el mapa debe dibujar de cada capa cuando hay una zona elegida.
@@ -256,54 +299,144 @@ export function recorteDe(
   a: Ambito,
   capas: CapasMirar,
 ): Map<string, GeoJSON.FeatureCollection> {
-  const salida = new Map<string, GeoJSON.FeatureCollection>()
-  if (a.nivel === 'urbano') return salida
-
-  const { plataformas, barrios, equipamientos } = capas
+  const salida = new Map<string, GeoJSON.FeatureCollection>();
+  const { plataformas, barrios, equipamientos } = capas;
+  const urbano = a.nivel === "urbano";
 
   if (plataformas) {
-    // En una plataforma se deja solo esa. En un barrio no se deja ninguna: la
-    // zona ya se dibuja aparte y la plataforma entera solo taparía el barrio.
-    const clave = a.nivel === 'plataforma' ? a.clave.slice('plataforma:'.length) : null
-    salida.set(
-      plataformas.id,
-      clave === null
-        ? VACIA
-        : soloCon(plataformas, (f) => texto(f.properties?.clave) === clave),
-    )
+    // Las plataformas no las dibuja la capa de datos en este modo: las pinta
+    // el mapa aparte, que es el único sitio donde se puede distinguir la
+    // elegida —relleno y contorno grueso— de las vecinas —contorno fino, para
+    // no perder la orientación—. Dejarlas también aquí las pintaría dos veces.
+    salida.set(plataformas.id, VACIA);
   }
 
-  if (barrios) {
-    const indice = a.nivel === 'barrio' ? Number(a.clave.slice('barrio:'.length)) : null
+  if (barrios && !urbano) {
+    const indice =
+      a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
     salida.set(
       barrios.id,
       indice !== null
         ? soloCon(barrios, (_f, i) => i === indice)
         : soloCon(barrios, (f) => {
-            const c = centroDe(f)
-            return c !== null && dentro(a, c[0], c[1])
+            const c = centroDe(f);
+            return c !== null && dentro(a, c[0], c[1]);
           }),
-    )
+    );
   }
 
-  if (equipamientos) {
+  if (equipamientos && !urbano) {
     salida.set(
       equipamientos.id,
       soloCon(equipamientos, (f) => {
-        const g = f.geometry
-        if (!g || g.type !== 'Point') return false
-        const [lon, lat] = g.coordinates as [number, number]
-        return dentro(a, lon, lat)
+        const g = f.geometry;
+        if (!g || g.type !== "Point") return false;
+        const [lon, lat] = g.coordinates as [number, number];
+        return dentro(a, lon, lat);
       }),
-    )
+    );
   }
 
-  return salida
+  return salida;
 }
+
+/** La letra de una plataforma, puesta en el mapa. */
+export interface Marca {
+  clave: string;
+  letra: string;
+  /** Lo que se lee al pasar por encima. */
+  titulo: string;
+  lon: number;
+  lat: number;
+}
+
+/**
+ * Dónde va la letra de cada plataforma.
+ *
+ * Como marcador de HTML y no como rótulo del estilo: poner texto en el mapa
+ * obliga a servir una fuente de glifos entera, y aquí son dieciocho letras.
+ *
+ * El punto es el centro de la pieza más grande. En una plataforma con forma de
+ * ele el centro puede caer fuera del polígono; se acepta, porque la letra es
+ * una referencia para orientarse y no una afirmación sobre la geometría.
+ */
+export function marcasDe(ambitos: Ambito[]): Marca[] {
+  const salida: Marca[] = [];
+  for (const a of ambitos) {
+    if (a.nivel !== "plataforma") continue;
+    const mayor = a.piezas.reduce(
+      (mejor, p) => (p[0].length > (mejor?.[0].length ?? 0) ? p : mejor),
+      a.piezas[0],
+    );
+    const anillo = mayor?.[0];
+    if (!anillo?.length) continue;
+    const n = anillo.length - 1;
+    if (n <= 0) continue;
+    let x = 0;
+    let y = 0;
+    for (let i = 0; i < n; i++) {
+      x += anillo[i][0];
+      y += anillo[i][1];
+    }
+    salida.push({
+      clave: a.clave,
+      letra: a.clave.slice("plataforma:".length),
+      titulo: `${a.titulo} · ${Math.round(a.ha)} ha`,
+      lon: x / n,
+      lat: y / n,
+    });
+  }
+  return salida;
+}
+
+/**
+ * El color de cada tipo de equipamiento.
+ *
+ * Fijo y escrito a mano, no repartido por orden de aparición. Dos mapas de dos
+ * plataformas distintas tienen que poder ponerse uno al lado del otro, y si el
+ * color se asignara según los tipos que aparecen en cada zona, «Salud» sería
+ * rojo en uno y verde en el otro.
+ *
+ * Son los doce tipos del inventario municipal. Lo que no esté en la lista cae
+ * en el gris de «otros», que es más honesto que colarlo en un color con
+ * significado.
+ */
+export const COLOR_TIPO: Record<string, string> = {
+  Educación: "#2c6fb5",
+  Salud: "#c0453b",
+  Transporte: "#c9752b",
+  "Recreativo y Deporte": "#2f8f5b",
+  Religioso: "#6a4fa3",
+  "Administración Pública": "#1f7a8c",
+  Cultural: "#b8577e",
+  Infraestructura: "#8c5a3c",
+  Seguridad: "#7f8c3a",
+  "Bienestar Social": "#d4a017",
+  Especial: "#5c6b73",
+  "Servicios Funerarios": "#4a4458",
+};
+
+const GRIS_OTROS = "#8496a4";
+
+/** El color de un tipo, o el gris de «otros» si no es de los doce. */
+export const colorDeTipo = (tipo: string): string =>
+  COLOR_TIPO[tipo] ?? GRIS_OTROS;
+
+/** El tema que pinta los equipamientos por su tipo. */
+export const temaDeTipos = (): Tema => ({
+  campo: "tipo",
+  unidad: "tipo de equipamiento",
+  coincidencias: Object.entries(COLOR_TIPO).map(([valor, color]) => ({
+    valor,
+    color,
+    rotulo: valor,
+  })),
+  respaldo: GRIS_OTROS,
+});
 
 /** Las capas que el modo Mirar necesita tener cargadas. */
 export const CAPAS_MIRAR = [
-  { archivo: 'plataformas.geojson', nombre: 'Plataformas' },
-  { archivo: 'barrios.geojson', nombre: 'Barrios' },
-  { archivo: 'equipamientos.geojson', nombre: 'Equipamientos' },
-]
+  { archivo: "plataformas.geojson", nombre: "Plataformas" },
+  { archivo: "barrios.geojson", nombre: "Barrios" },
+  { archivo: "equipamientos.geojson", nombre: "Equipamientos" },
+];
