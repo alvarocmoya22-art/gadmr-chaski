@@ -58,37 +58,77 @@ En Windows se deja arrancado con la misma tarea programada que ya está hecha
 (`automatico.ps1`), pero conviene registrarla para que corra **al iniciar el
 equipo** y no al iniciar sesión, para que no dependa de que alguien entre.
 
-## Lo que hay que decidir antes, y no después
+## El catastro, y la puerta que lleva delante
 
-**Quien alcance el puerto 9000 ve todo lo publicado, sin contraseña.**
-`pg_featureserv` no tiene usuarios. Mientras corría en `127.0.0.1` eso daba
-igual, porque solo lo alcanzaba un equipo. En un servidor, lo alcanza la red.
+Entre lo publicado está `gis_catastro`, que trae la columna **`nombre`** —el
+propietario— además de `observaciones` y `observacion_2`. Mientras el servicio
+corría en `127.0.0.1` eso daba igual, porque solo lo alcanzaba un equipo. En un
+servidor lo alcanza la red, y **quien alcance el puerto ve todo lo publicado**:
+`pg_featureserv` no tiene usuarios. Su binario tiene seis opciones y ninguna es
+de autenticación.
 
-Y entre lo publicado está `gis_catastro`, que trae la columna **`nombre`** —el
-propietario— además de `observaciones` y `observacion_2`.
+La decisión tomada es **ponerle una puerta con usuario y clave delante**.
+CHASKI ya tiene esos campos en la ficha de la conexión y están probados de
+punta a punta: sin clave responde 401 y sale el aviso; con ella lista las
+tablas y trae las capas.
 
-Hay tres salidas, y conviene elegir una a conciencia:
+### Cómo queda
 
-1. **Publicar una vista en vez de la tabla.** La más limpia: se ve el predio,
-   su clave y su superficie, y el nombre no sale de la base.
+```
+   Navegador  ──►  Caddy :9000  ──►  pg_featureserv 127.0.0.1:9100  ──►  Base
+                   (pide clave)      (ya no lo alcanza nadie de fuera)
+```
 
-   ```sql
-   CREATE OR REPLACE VIEW public.gis_catastro_publico AS
-   SELECT gid, claves, codigo_predio, codigo_manzana, bloque, piso,
-          tipo_catastro, estado, area, area_levantamiento, area_escritura,
-          geom
-   FROM public.gis_catastro;
-   ```
+La configuración está en [`servidor/Caddyfile`](../servidor/Caddyfile), con los
+comentarios de qué cambiar. Tres cosas que no son evidentes y cuestan una tarde
+si se descubren sobre la marcha:
 
-   Después, en el `.toml`, se cambia `public.gis_catastro` por
-   `public.gis_catastro_publico`.
+1. **pg_featureserv tiene que volver a `127.0.0.1`**, en otro puerto. Si sigue
+   escuchando en `0.0.0.0`, la puerta no pinta nada: se la saltan apuntando al
+   puerto de atrás.
 
-2. **Poner una puerta delante**, con usuario y clave por HTTP. CHASKI ya tiene
-   los campos para eso en la ficha de la conexión.
+2. **El preflight no lleva clave.** Antes de mandar la autenticación, el
+   navegador pregunta con un `OPTIONS` que viaja sin credenciales. Si la puerta
+   le responde 401, el navegador corta ahí y la clave no llega ni a salir; lo
+   que se ve en CHASKI es un fallo de red que no habla de permisos. Por eso el
+   `Caddyfile` responde el `OPTIONS` antes de pedir nada.
 
-3. **Dejarlo abierto dentro de la red**, si en la institución el catastro con
-   nombres ya es de consulta interna general. Es una decisión de quien responde
-   por ese dato, no técnica.
+3. **Por `http`, la clave viaja legible.** «Basic» no cifra: codifica. Dentro de
+   la red del municipio puede darse por bueno —es la misma red por la que ya
+   viaja la sesión de pgAdmin—, pero si el servicio va a salir de ahí, la puerta
+   tiene que llevar certificado y hablar `https`.
+
+### Lo que queda por hacer en el servidor
+
+- Instalar Caddy (un solo `.exe`) y sacar el cifrado de la clave con
+  `caddy hash-password`.
+- Cambiar el `pg_featureserv.toml` al puerto de atrás y a `127.0.0.1`.
+- Registrar las dos como tarea **al iniciar el equipo**, no al iniciar sesión:
+  `automatico.ps1` sirve de molde, pero ahora son dos procesos.
+- Probarlo desde otro equipo de la red, no desde el servidor: desde el propio
+  servidor `localhost` funciona aunque el cortafuegos esté cerrado.
+
+El `Caddyfile` está escrito pero **no probado contra un Caddy de verdad**: aquí
+no hay ninguno instalado y no me pongo a descargarlo en tu equipo sin que lo
+digas. Lo que sí está probado es la mitad que depende de CHASKI, con un banco
+de pruebas que hacía exactamente lo que hará Caddy.
+
+### Si la institución prefiere no abrir esa puerta
+
+La otra salida sigue en pie y es más limpia cuando el nombre no hace falta para
+nada: publicar una vista en vez de la tabla.
+
+```sql
+CREATE OR REPLACE VIEW public.gis_catastro_publico AS
+SELECT gid, claves, codigo_predio, codigo_manzana, bloque, piso,
+       tipo_catastro, estado, area, area_levantamiento, area_escritura,
+       geom
+FROM public.gis_catastro;
+```
+
+Después, en el `.toml`, `public.gis_catastro` se cambia por
+`public.gis_catastro_publico`. Las dos cosas no se estorban: se puede tener la
+puerta y publicar la vista detrás.
 
 ## Y el sitio publicado en internet
 

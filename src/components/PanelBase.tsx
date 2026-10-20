@@ -356,8 +356,9 @@ export default function PanelBase({
           )}
 
           <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-            Solo lectura. Se ve lo que el servicio publique: el nombre del propietario del
-            catastro no debe estar entre esas tablas.
+            Solo lectura: CHASKI no escribe en la base. Se ve lo que el servicio publique;
+            si ahí va el catastro con el nombre del propietario, ese servicio tiene que
+            pedir clave.
           </p>
         </div>
       )}

@@ -1,0 +1,73 @@
+# La puerta con usuario y clave delante del servicio de capas.
+#
+# pg_featureserv no tiene usuarios: su binario tiene seis opciones y ninguna
+# es de autenticacion. La puerta la pone esto, delante.
+#
+#   navegador --> Caddy :9000 (pide clave) --> pg_featureserv 127.0.0.1:9100
+#
+# Para que sirva de algo hay que mover pg_featureserv al 9100 y dejarlo SOLO
+# en local, en su pg_featureserv.toml:
+#
+#     HttpHost    = "127.0.0.1"      # que no lo alcance nadie por fuera
+#     HttpPort    = 9100
+#     CORSOrigins = "http://servidor-del-gadm"   # el origen de CHASKI, UNO solo
+#
+# Si pg_featureserv se queda escuchando en 0.0.0.0, la puerta no pinta nada:
+# se la saltan apuntando al otro puerto.
+#
+# La clave no se escribe aqui tal cual, va cifrada. Para sacar el cifrado:
+#
+#     caddy hash-password
+#
+# y se pega lo que imprime (empieza por $2a$) donde dice REEMPLAZAR.
+
+{
+	# Sin esto Caddy intenta sacar un certificado solo, y en una red interna,
+	# sin nombre publico, se queda reintentando.
+	auto_https off
+}
+
+http://:9000 {
+	# ------------------------------------------------------------------
+	# El preflight va PRIMERO y sin pedir clave.
+	#
+	# Antes de mandar la cabecera de autenticacion el navegador pregunta con
+	# un OPTIONS, y ese OPTIONS viaja SIN credenciales. Si la puerta le
+	# responde 401, el navegador corta ahi y la clave no llega ni a salir:
+	# en CHASKI se ve un fallo de red que no habla de permisos. Comprobado
+	# con un banco de pruebas antes de escribir esto.
+	#
+	# El origen tiene que coincidir con el de pg_featureserv letra por letra,
+	# incluido el puerto si lo lleva.
+	# ------------------------------------------------------------------
+	@preflight method OPTIONS
+	handle @preflight {
+		header Access-Control-Allow-Origin "http://servidor-del-gadm"
+		header Access-Control-Allow-Headers "Authorization, Content-Type"
+		header Access-Control-Allow-Methods "GET, OPTIONS"
+		header Access-Control-Max-Age "600"
+		respond 204
+	}
+
+	handle {
+		# `route` respeta el orden escrito. Hace falta: el `header` tiene que
+		# envolver la respuesta ANTES de que `basic_auth` escriba su 401, o no
+		# llega a quitarle nada.
+		route {
+			# Que el navegador no saque su propio cuadro de usuario y clave:
+			# el error tiene que llegar a CHASKI, que ya sabe explicarlo.
+			header -WWW-Authenticate
+
+			basic_auth {
+				# usuario   clave cifrada con `caddy hash-password`
+				phdu        REEMPLAZAR-POR-EL-CIFRADO
+			}
+
+			reverse_proxy 127.0.0.1:9100
+		}
+	}
+}
+
+# En Caddy 2.7 y anteriores la directiva se llamaba `basicauth`, sin la raya
+# baja. Si al arrancar dice que no conoce `basic_auth`, es eso: o se cambia el
+# nombre aqui, o se pone un Caddy mas nuevo.

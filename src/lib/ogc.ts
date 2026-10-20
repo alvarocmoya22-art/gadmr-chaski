@@ -64,7 +64,9 @@ export async function listarColecciones(
   const resp = await fetch(url, { headers: cabeceras })
   if (resp.status === 401 || resp.status === 403) {
     throw new Error(
-      'El servicio pide usuario y clave, o los que diste no valen. Ponlos en la ficha de la conexión.',
+      // El usuario vive en la ficha y la clave en su propio campo: decir solo
+      // «ponlos en la ficha» manda al sitio equivocado a quien ya tiene usuario.
+      'El servicio pide usuario y clave, o los que diste no valen. Revisa el usuario en la ficha de la conexión y vuelve a escribir la clave.',
     )
   }
   if (!resp.ok) throw new Error(`el servicio respondió ${resp.status}`)
