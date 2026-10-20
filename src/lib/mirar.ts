@@ -754,8 +754,15 @@ export const temaDeTipos = (): Tema => ({
 
 /** Las capas que el modo Mirar necesita tener cargadas. */
 export const CAPAS_MIRAR = [
-  // Las parroquias primero: son el nivel de arriba del filtro.
-  { archivo: "parroquias.geojson", nombre: "Parroquias" },
+  /*
+   * Las parroquias primero: son el nivel de arriba del filtro.
+   *
+   * Se usa `parroquias_canton`, que son las diecisiete —cinco urbanas, once
+   * rurales y el área rural de la propia parroquia Riobamba—, y no
+   * `parroquias.geojson`, que solo trae las cinco urbanas y dejaría fuera del
+   * filtro todo lo que no sea casco.
+   */
+  { archivo: "parroquias_canton.geojson", nombre: "Parroquias" },
   { archivo: "plataformas.geojson", nombre: "Plataformas" },
   { archivo: "barrios.geojson", nombre: "Barrios" },
   { archivo: "equipamientos.geojson", nombre: "Equipamientos" },

@@ -102,9 +102,17 @@ export default function PanelMirar({
   });
 
   const sup = (a: Ambito) => `${numero(Math.round(a.ha))} ha`;
-  /** «las 7» / «la 1», porque «las 1 de Yaruquíes» se lee fatal. */
-  const cuantas = (n: number) => (n === 1 ? "la 1" : `las ${numero(n)}`);
-  const cuantos = (n: number) => (n === 1 ? "el 1" : `los ${numero(n)}`);
+  /*
+   * «las 7», «la 1», «ninguna».
+   *
+   * Las parroquias rurales no tienen plataformas ni barrios —solo los tiene
+   * el casco—, así que el cero sale a menudo, y «las 0 de Pungalá» se lee
+   * como un fallo en vez de como un dato.
+   */
+  const cuantas = (n: number) =>
+    n === 0 ? "ninguna" : n === 1 ? "la 1" : `las ${numero(n)}`;
+  const cuantos = (n: number) =>
+    n === 0 ? "ninguno" : n === 1 ? "el 1" : `los ${numero(n)}`;
   const rotulo =
     "text-[11px] font-semibold uppercase tracking-wide text-[var(--gr-tinta-3)]";
   const campo =
