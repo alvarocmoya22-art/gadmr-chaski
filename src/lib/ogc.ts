@@ -103,12 +103,27 @@ export async function traerColeccion(
   coleccion: Coleccion,
   alAvanzar?: (traidos: number, total: number | null) => void,
   cabeceras: Record<string, string> = {},
-): Promise<{ capa: Capa; cortada: boolean; total: number | null }> {
+): Promise<{
+  capa: Capa
+  cortada: boolean
+  total: number | null
+  /** Filas que la base devolvió sin geometría y no se pudieron dibujar. */
+  sinGeometria: number
+}> {
   const raiz = limpiarBase(base)
   let url: string | null = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}`
   const rasgos: GeoJSON.Feature[] = []
   let total: number | null = null
   let cortada = false
+  /*
+   * Filas pedidas, no rasgos guardados.
+   *
+   * Para el `offset` hace falta saber por cuántas FILAS va el servicio, y en
+   * `rasgos` no entran las que vienen sin geometría. Usar su longitud haría
+   * que cada fila descartada corriera la ventana hacia atrás y volviera a
+   * pedir filas ya traídas: la capa saldría con registros repetidos.
+   */
+  let recibidos = 0
 
   while (url) {
     const resp: Response = await fetch(url, { headers: cabeceras })
@@ -125,11 +140,34 @@ export async function traerColeccion(
       cortada = true
       break
     }
+    const vinieron = pagina.numberReturned ?? pagina.features?.length ?? 0
+    recibidos += vinieron
     // Sin rasgos nuevos no hay nada que seguir: evita dar vueltas si el
     // servicio devuelve un `next` que apunta a una página vacía.
-    if ((pagina.numberReturned ?? pagina.features?.length ?? 0) === 0) break
+    if (vinieron === 0) break
+
+    /*
+     * Cómo se pasa a la página siguiente.
+     *
+     * El estándar dice que la respuesta traiga un enlace `rel="next"`, y esto
+     * lo seguía. Pero **pg_featureserv no lo manda** —solo `self` y
+     * `alternate`—, así que la primera página era la única: de los 9.546 ejes
+     * viales de la base llegaban 1.000, el 10 %, y lo que se veía en el mapa
+     * era media ciudad sin calles. Nada avisaba: la capa cargaba bien, con su
+     * nombre y su tabla, solo que incompleta.
+     *
+     * Cuando no hay `next` y la página vino llena, se sigue por `offset`, que
+     * es lo que el propio estándar define para paginar. Si vino a medias, es
+     * la última y no hay nada más que pedir.
+     */
     const siguiente = (pagina.links ?? []).find((l) => l.rel === 'next')?.href
-    url = siguiente ? (siguiente.includes('f=json') ? siguiente : `${siguiente}&f=json`) : null
+    if (siguiente) {
+      url = siguiente.includes('f=json') ? siguiente : `${siguiente}&f=json`
+    } else if (vinieron >= POR_VUELTA) {
+      url = `${raiz}/collections/${encodeURIComponent(coleccion.id)}/items?f=json&limit=${POR_VUELTA}&offset=${recibidos}`
+    } else {
+      url = null
+    }
   }
 
   if (rasgos.length === 0) throw new Error('la colección llegó vacía')
@@ -143,6 +181,7 @@ export async function traerColeccion(
   const archivo = new File([JSON.stringify(geo)], `${coleccion.id}.geojson`)
   const { capa } = await leerArchivo(archivo)
   return {
+    sinGeometria: recibidos - rasgos.length,
     capa: {
       ...capa,
       nombre: coleccion.titulo,

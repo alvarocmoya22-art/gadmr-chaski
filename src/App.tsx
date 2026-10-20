@@ -692,6 +692,7 @@ export default function App() {
           capa: nueva,
           cortada,
           total,
+          sinGeometria,
         } = await traerColeccion(
           baseUrl,
           c,
@@ -707,7 +708,14 @@ export default function App() {
           {
             texto: cortada
               ? `${nueva.nombre}: se trajeron los primeros ${numero(nueva.geo.features.length)} de ${total ? numero(total) : "muchos"} registros.`
-              : `${nueva.nombre}: ${numero(nueva.geo.features.length)} registros de la base.`,
+              : // Las filas sin geometría se descartan al dibujar. Decirlo:
+                // una capa que calla lo que se dejó por el camino es
+                // exactamente lo que hacía que los ejes viales salieran a
+                // medias sin que nada avisara.
+                `${nueva.nombre}: ${numero(nueva.geo.features.length)} registros de la base.` +
+                  (sinGeometria > 0
+                    ? ` ${numero(sinGeometria)} ${sinGeometria === 1 ? 'fila venía' : 'filas venían'} sin geometría y no se ${sinGeometria === 1 ? 'dibuja' : 'dibujan'}.`
+                    : ''),
             mal: false,
           },
         ]);
