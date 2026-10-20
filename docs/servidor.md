@@ -80,8 +80,10 @@ tablas y trae las capas.
 ```
 
 La configuración está en [`servidor/Caddyfile`](../servidor/Caddyfile), con los
-comentarios de qué cambiar. Tres cosas que no son evidentes y cuestan una tarde
-si se descubren sobre la marcha:
+comentarios de qué cambiar. **Está probada contra Caddy 2.11.7 de verdad**, con
+CHASKI delante: clave mala da 401 con el aviso correcto, clave buena lista las
+15 tablas y trae la capa. Cuatro cosas que no son evidentes y que costaron
+justamente eso, probarlo:
 
 1. **pg_featureserv tiene que volver a `127.0.0.1`**, en otro puerto. Si sigue
    escuchando en `0.0.0.0`, la puerta no pinta nada: se la saltan apuntando al
@@ -93,25 +95,29 @@ si se descubren sobre la marcha:
    que se ve en CHASKI es un fallo de red que no habla de permisos. Por eso el
    `Caddyfile` responde el `OPTIONS` antes de pedir nada.
 
-3. **Por `http`, la clave viaja legible.** «Basic» no cifra: codifica. Dentro de
+3. **El 401 de `basic_auth` no sale por la vía normal**, sale por la de error,
+   así que lo que se ponga con `header` en el camino de ida no lo toca. Sin un
+   `handle_errors` que le añada la cabecera CORS, el navegador bloquea el 401 y
+   CHASKI vuelve a ver un fallo de red en vez de «la clave no vale» —el mismo
+   mensaje inútil, por otro camino—. Y sin quitarle el `WWW-Authenticate`, el
+   navegador saca **su** cuadro de usuario y clave por encima de la aplicación.
+
+4. **Por `http`, la clave viaja legible.** «Basic» no cifra: codifica. Dentro de
    la red del municipio puede darse por bueno —es la misma red por la que ya
    viaja la sesión de pgAdmin—, pero si el servicio va a salir de ahí, la puerta
    tiene que llevar certificado y hablar `https`.
 
 ### Lo que queda por hacer en el servidor
 
-- Instalar Caddy (un solo `.exe`) y sacar el cifrado de la clave con
-  `caddy hash-password`.
+- Copiar Caddy (quedó en `C:\Users\alvar\caddy\caddy.exe`, un solo archivo) y
+  sacar el cifrado de la clave con `caddy hash-password`.
+- Poner el origen real en las dos líneas del `Caddyfile` donde aparece
+  `http://servidor-del-gadm`, y el mismo en `CORSOrigins`.
 - Cambiar el `pg_featureserv.toml` al puerto de atrás y a `127.0.0.1`.
 - Registrar las dos como tarea **al iniciar el equipo**, no al iniciar sesión:
   `automatico.ps1` sirve de molde, pero ahora son dos procesos.
 - Probarlo desde otro equipo de la red, no desde el servidor: desde el propio
   servidor `localhost` funciona aunque el cortafuegos esté cerrado.
-
-El `Caddyfile` está escrito pero **no probado contra un Caddy de verdad**: aquí
-no hay ninguno instalado y no me pongo a descargarlo en tu equipo sin que lo
-digas. Lo que sí está probado es la mitad que depende de CHASKI, con un banco
-de pruebas que hacía exactamente lo que hará Caddy.
 
 ### Si la institución prefiere no abrir esa puerta
 
