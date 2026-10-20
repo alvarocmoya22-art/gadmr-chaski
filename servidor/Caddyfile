@@ -20,7 +20,6 @@
 #     caddy hash-password
 #
 # y se pega lo que imprime (empieza por $2a$) donde dice REEMPLAZAR.
-
 {
 	# Sin esto Caddy intenta sacar un certificado solo, y en una red interna,
 	# sin nombre publico, se queda reintentando.
@@ -50,21 +49,31 @@ http://:9000 {
 	}
 
 	handle {
-		# `route` respeta el orden escrito. Hace falta: el `header` tiene que
-		# envolver la respuesta ANTES de que `basic_auth` escriba su 401, o no
-		# llega a quitarle nada.
-		route {
-			# Que el navegador no saque su propio cuadro de usuario y clave:
-			# el error tiene que llegar a CHASKI, que ya sabe explicarlo.
-			header -WWW-Authenticate
-
-			basic_auth {
-				# usuario   clave cifrada con `caddy hash-password`
-				phdu        REEMPLAZAR-POR-EL-CIFRADO
-			}
-
-			reverse_proxy 127.0.0.1:9100
+		basic_auth {
+			# usuario   clave cifrada con `caddy hash-password`
+			phdu REEMPLAZAR-POR-EL-CIFRADO
 		}
+
+		reverse_proxy 127.0.0.1:9100
+	}
+
+	# ------------------------------------------------------------------
+	# El 401, para que CHASKI pueda explicarlo.
+	#
+	# `basic_auth` no escribe su 401 por la ruta normal, sino por la de
+	# error, asi que lo que se ponga arriba con `header` no lo toca. Sin
+	# esto pasan dos cosas, las dos comprobadas aqui antes de escribirlo:
+	#
+	#  - el 401 sale SIN la cabecera CORS, el navegador lo bloquea, y en
+	#    CHASKI se ve un fallo de red que no habla de permisos: justo el
+	#    mensaje que no sirve cuando lo que pasa es que la clave esta mal;
+	#  - sale con `WWW-Authenticate`, que hace al navegador sacar SU cuadro
+	#    de usuario y clave por encima de la aplicacion.
+	# ------------------------------------------------------------------
+	handle_errors {
+		header Access-Control-Allow-Origin "http://servidor-del-gadm"
+		header -WWW-Authenticate
+		respond "{err.status_code} {err.status_text}" {err.status_code}
 	}
 }
 
