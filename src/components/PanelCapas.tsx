@@ -7,44 +7,45 @@
  * lleva un resultado es su ficha —las cifras, la leyenda y cómo se obtuvo—,
  * porque sin eso nadie puede defenderlo en una mesa técnica.
  */
-import { useState } from 'react'
-import { CAPAS_MUNICIPIO, type CapaMunicipal } from '../lib/municipio'
-import type { ReactNode } from 'react'
-import type { Capa } from '../lib/cargar'
-import { descargar } from '../lib/exportar'
-import { cifraLeyenda } from '../lib/medidas'
-import { numero } from '../lib/format'
+import { useState } from "react";
+import { CAPAS_MUNICIPIO, type CapaMunicipal } from "../lib/municipio";
+import type { ReactNode } from "react";
+import type { Capa } from "../lib/cargar";
+import { descargar } from "../lib/exportar";
+import { cifraLeyenda } from "../lib/medidas";
+import { numero } from "../lib/format";
 
-const FORMA: Record<Capa['forma'], string> = {
-  punto: 'puntos',
-  linea: 'líneas',
-  poligono: 'polígonos',
-  mixta: 'formas mezcladas',
-}
+const FORMA: Record<Capa["forma"], string> = {
+  punto: "puntos",
+  linea: "líneas",
+  poligono: "polígonos",
+  mixta: "formas mezcladas",
+};
 
 interface Props {
-  capas: Capa[]
-  cargando: boolean
+  capas: Capa[];
+  cargando: boolean;
   /** La recién calculada, que entra con la ficha abierta. */
-  reciente: string | null
-  onArchivos: (archivos: FileList | File[]) => void
-  onEjemplo: () => void
-  onMunicipio: (entradas: CapaMunicipal[]) => void
+  reciente: string | null;
+  onArchivos: (archivos: FileList | File[]) => void;
+  onEjemplo: () => void;
+  onMunicipio: (entradas: CapaMunicipal[]) => void;
   /** El panel de la base institucional, que vive fuera pero se enseña aquí. */
-  base?: ReactNode
-  onVisible: (id: string) => void
-  onQuitar: (id: string) => void
-  onEncuadrar: (id: string) => void
+  base?: ReactNode;
+  onVisible: (id: string) => void;
+  onQuitar: (id: string) => void;
+  onEncuadrar: (id: string) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
 function tramos(cortes: number[]): string[] {
-  const texto = cifraLeyenda
-  if (cortes.length === 0) return ['Todas las piezas']
-  const salida = [`hasta ${texto(cortes[0])}`]
-  for (let i = 1; i < cortes.length; i++) salida.push(`${texto(cortes[i - 1])} a ${texto(cortes[i])}`)
-  salida.push(`más de ${texto(cortes[cortes.length - 1])}`)
-  return salida
+  const texto = cifraLeyenda;
+  if (cortes.length === 0) return ["Todas las piezas"];
+  const salida = [`hasta ${texto(cortes[0])}`];
+  for (let i = 1; i < cortes.length; i++)
+    salida.push(`${texto(cortes[i - 1])} a ${texto(cortes[i])}`);
+  salida.push(`más de ${texto(cortes[cortes.length - 1])}`);
+  return salida;
 }
 
 export default function PanelCapas({
@@ -59,35 +60,36 @@ export default function PanelCapas({
   onQuitar,
   onEncuadrar,
 }: Props) {
-  const [encima, setEncima] = useState(false)
-  const [elegidas, setElegidas] = useState<Set<string>>(new Set())
-  const [catalogoAbierto, setCatalogoAbierto] = useState(false)
-  const [abierta, setAbierta] = useState<string | null>(null)
+  const [encima, setEncima] = useState(false);
+  const [elegidas, setElegidas] = useState<Set<string>>(new Set());
+  const [catalogoAbierto, setCatalogoAbierto] = useState(false);
+  const [abierta, setAbierta] = useState<string | null>(null);
 
   return (
     <section className="space-y-3">
       <label
         onDragOver={(e) => {
-          e.preventDefault()
-          setEncima(true)
+          e.preventDefault();
+          setEncima(true);
         }}
         onDragLeave={() => setEncima(false)}
         onDrop={(e) => {
-          e.preventDefault()
-          setEncima(false)
-          if (e.dataTransfer.files.length) onArchivos(e.dataTransfer.files)
+          e.preventDefault();
+          setEncima(false);
+          if (e.dataTransfer.files.length) onArchivos(e.dataTransfer.files);
         }}
         className={`block cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
           encima
-            ? 'border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]'
-            : 'border-[var(--gr-linea-fuerte)] hover:border-[var(--gr-azul-500)]'
+            ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]"
+            : "border-[var(--gr-linea-fuerte)] hover:border-[var(--gr-azul-500)]"
         }`}
       >
         <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
-          {cargando ? 'Leyendo…' : 'Suelta tus capas aquí'}
+          {cargando ? "Leyendo…" : "Suelta tus capas aquí"}
         </span>
         <span className="mt-1 block text-xs leading-snug text-[var(--gr-tinta-3)]">
-          GeoJSON · shapefile en <code>.zip</code> · CSV con columnas de coordenadas.
+          GeoJSON · shapefile en <code>.zip</code> · CSV con columnas de
+          coordenadas.
           <br />
           Se leen en tu navegador: no se sube nada a ningún servidor.
         </span>
@@ -97,8 +99,8 @@ export default function PanelCapas({
           accept=".geojson,.json,.zip,.csv,.txt"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files?.length) onArchivos(e.target.files)
-            e.target.value = ''
+            if (e.target.files?.length) onArchivos(e.target.files);
+            e.target.value = "";
           }}
         />
       </label>
@@ -121,7 +123,7 @@ export default function PanelCapas({
             Capas del municipio
           </span>
           <span className="text-[11px] text-[var(--gr-tinta-3)]">
-            {numero(CAPAS_MUNICIPIO.length)} {catalogoAbierto ? '▾' : '▸'}
+            {numero(CAPAS_MUNICIPIO.length)} {catalogoAbierto ? "▾" : "▸"}
           </span>
         </button>
         {catalogoAbierto && (
@@ -138,10 +140,11 @@ export default function PanelCapas({
                       checked={elegidas.has(c.archivo)}
                       onChange={() =>
                         setElegidas((previas) => {
-                          const siguiente = new Set(previas)
-                          if (siguiente.has(c.archivo)) siguiente.delete(c.archivo)
-                          else siguiente.add(c.archivo)
-                          return siguiente
+                          const siguiente = new Set(previas);
+                          if (siguiente.has(c.archivo))
+                            siguiente.delete(c.archivo);
+                          else siguiente.add(c.archivo);
+                          return siguiente;
                         })
                       }
                       className="mt-0.5"
@@ -167,19 +170,22 @@ export default function PanelCapas({
               type="button"
               disabled={cargando || elegidas.size === 0}
               onClick={() => {
-                onMunicipio(CAPAS_MUNICIPIO.filter((c) => elegidas.has(c.archivo)))
-                setElegidas(new Set())
+                onMunicipio(
+                  CAPAS_MUNICIPIO.filter((c) => elegidas.has(c.archivo)),
+                );
+                setElegidas(new Set());
               }}
               className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               {cargando
-                ? 'Trayendo…'
+                ? "Trayendo…"
                 : elegidas.size === 0
-                  ? 'Marca alguna capa'
-                  : `Traer ${numero(elegidas.size)} ${elegidas.size === 1 ? 'capa' : 'capas'}`}
+                  ? "Marca alguna capa"
+                  : `Traer ${numero(elegidas.size)} ${elegidas.size === 1 ? "capa" : "capas"}`}
             </button>
             <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-              El catastro trae clave y superficie, nunca el nombre del propietario.
+              El catastro trae clave y superficie, nunca el nombre del
+              propietario.
             </p>
           </div>
         )}
@@ -203,39 +209,45 @@ export default function PanelCapas({
             disabled={cargando}
             className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {cargando ? 'Cargando…' : 'Probar con el ejemplo de Riobamba'}
+            {cargando ? "Cargando…" : "Probar con el ejemplo de Riobamba"}
           </button>
           <p className="text-xs leading-relaxed text-[var(--gr-tinta-3)]">
-            Equipamientos, plataformas, barrios y vialidad. Son datos reales y públicos:
-            sirven para ver qué hace esto antes de traer los tuyos.
+            Equipamientos, plataformas, barrios y vialidad. Son datos reales y
+            públicos: sirven para ver qué hace esto antes de traer los tuyos.
           </p>
           <p className="text-xs leading-relaxed text-[var(--gr-tinta-3)]">
-            Un shapefile hay que soltarlo comprimido: el <code>.shp</code> solo, sin su{' '}
-            <code>.dbf</code> y su <code>.prj</code>, no trae ni la tabla ni el sistema de
-            coordenadas.
+            Un shapefile hay que soltarlo comprimido: el <code>.shp</code> solo,
+            sin su <code>.dbf</code> y su <code>.prj</code>, no trae ni la tabla
+            ni el sistema de coordenadas.
           </p>
         </div>
       ) : (
         <ul className="space-y-2">
           {capas.map((c) => {
-            const fichaAbierta = abierta === c.id || (abierta === null && reciente === c.id)
+            const fichaAbierta =
+              abierta === c.id || (abierta === null && reciente === c.id);
             return (
               <li
                 key={c.id}
                 className={`rounded-md border bg-[var(--gr-superficie)] p-2 ${
                   reciente === c.id
-                    ? 'border-[var(--gr-azul-500)]'
-                    : 'border-[var(--gr-linea)]'
+                    ? "border-[var(--gr-azul-500)]"
+                    : "border-[var(--gr-linea)]"
                 }`}
               >
-                <div className="flex items-start gap-2">
+                {/* Apagada se ve apagada: con doce capas en la mesa, si la
+                    tarjeta no cambia hay que ir leyendo una por una para
+                    saber cuál se dejó de dibujar. */}
+                <div
+                  className={`flex items-start gap-2 ${c.visible ? "" : "opacity-45"}`}
+                >
                   <button
                     type="button"
                     onClick={() => onVisible(c.id)}
-                    title={c.visible ? 'Ocultar' : 'Mostrar'}
+                    title={c.visible ? "Apagar" : "Encender"}
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border"
                     style={{
-                      backgroundColor: c.visible ? c.color : 'transparent',
+                      backgroundColor: c.visible ? c.color : "transparent",
                       borderColor: c.color,
                     }}
                   />
@@ -252,8 +264,9 @@ export default function PanelCapas({
                       {c.nombre}
                     </p>
                     <p className="text-xs text-[var(--gr-tinta-3)]">
-                      {numero(c.geo.features.length)} {FORMA[c.forma]} · {c.campos.length}{' '}
-                      {c.campos.length === 1 ? 'campo' : 'campos'}
+                      {numero(c.geo.features.length)} {FORMA[c.forma]} ·{" "}
+                      {c.campos.length}{" "}
+                      {c.campos.length === 1 ? "campo" : "campos"}
                     </p>
                     {/*
                       Que la capa trae fechas se dice aquí, sin que haya que
@@ -270,19 +283,30 @@ export default function PanelCapas({
                         {`: de ${c.fechas[0].desde.toISOString().slice(0, 10)} a ${c.fechas[0].hasta
                           .toISOString()
                           .slice(0, 10)}`}
-                        {!c.fechas[0].seguro && ' · día/mes asumido'}
+                        {!c.fechas[0].seguro && " · día/mes asumido"}
                       </p>
                     )}
                   </div>
                 </div>
 
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                  {/* Apagar la capa ya se podía pulsando el cuadro de color,
+                      pero un cuadro de color se lee como una muestra, no como
+                      un interruptor: nadie lo encontraba. Con su nombre al
+                      lado de las demás acciones, se ve. */}
                   <button
                     type="button"
-                    onClick={() => setAbierta(fichaAbierta ? '' : c.id)}
+                    onClick={() => onVisible(c.id)}
+                    className="text-[var(--gr-azul-500)] hover:underline"
+                  >
+                    {c.visible ? "Apagar" : "Encender"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbierta(fichaAbierta ? "" : c.id)}
                     className="text-[var(--gr-tinta-3)] underline decoration-dotted"
                   >
-                    {fichaAbierta ? 'Ocultar ficha' : 'Ver ficha'}
+                    {fichaAbierta ? "Ocultar ficha" : "Ver ficha"}
                   </button>
                   <button
                     type="button"
@@ -331,24 +355,36 @@ export default function PanelCapas({
                       <ul className="space-y-0.5">
                         {c.tema.coincidencias
                           ? c.tema.coincidencias.map((m) => (
-                              <li key={m.valor} className="flex items-center gap-1.5 text-[11px]">
+                              <li
+                                key={m.valor}
+                                className="flex items-center gap-1.5 text-[11px]"
+                              >
                                 <span
                                   className="h-2.5 w-4 shrink-0 rounded-sm"
                                   style={{ backgroundColor: m.color }}
                                 />
-                                <span className="text-[var(--gr-tinta-2)]">{m.rotulo}</span>
+                                <span className="text-[var(--gr-tinta-2)]">
+                                  {m.rotulo}
+                                </span>
                               </li>
                             ))
                           : tramos(c.tema.cortes ?? []).map((t, i) => (
-                              <li key={t} className="flex items-center gap-1.5 text-[11px]">
+                              <li
+                                key={t}
+                                className="flex items-center gap-1.5 text-[11px]"
+                              >
                                 <span
                                   className="h-2.5 w-4 shrink-0 rounded-sm"
-                                  style={{ backgroundColor: (c.tema?.colores ?? [])[i] }}
+                                  style={{
+                                    backgroundColor: (c.tema?.colores ?? [])[i],
+                                  }}
                                 />
                                 <span className="text-[var(--gr-tinta-2)]">
                                   {/* Sin tramos no hay escala, y poner la unidad al
                                       lado de «todas» solo sonaría raro. */}
-                                  {(c.tema?.cortes ?? []).length === 0 ? t : `${t} ${c.tema?.unidad}`}
+                                  {(c.tema?.cortes ?? []).length === 0
+                                    ? t
+                                    : `${t} ${c.tema?.unidad}`}
                                 </span>
                               </li>
                             ))}
@@ -379,7 +415,8 @@ export default function PanelCapas({
                                 {f.nombre}
                               </th>
                               <td className="py-0.5 text-[var(--gr-tinta-3)]">
-                                {numero(f.distintos)} distintos · p. ej. {f.ejemplo || '—'}
+                                {numero(f.distintos)} distintos · p. ej.{" "}
+                                {f.ejemplo || "—"}
                               </td>
                             </tr>
                           ))}
@@ -394,16 +431,19 @@ export default function PanelCapas({
                       </table>
                     </details>
 
-                    <p className="truncate text-[11px] text-[var(--gr-tinta-3)]" title={c.origen}>
+                    <p
+                      className="truncate text-[11px] text-[var(--gr-tinta-3)]"
+                      title={c.origen}
+                    >
                       Origen: {c.origen}
                     </p>
                   </div>
                 )}
               </li>
-            )
+            );
           })}
         </ul>
       )}
     </section>
-  )
+  );
 }

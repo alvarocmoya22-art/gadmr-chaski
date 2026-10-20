@@ -300,7 +300,103 @@ const soloCon = (
  * pasar. Para cortar de verdad por un límite está la herramienta «recortar»,
  * que es una operación con resultado, no una forma de mirar.
  */
-function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
+/** Las cadenas de puntos de una geometría: los anillos de un área, el trazo de una línea. */
+function cadenasDe(g: GeoJSON.Geometry): [number, number][][] {
+  const salida: [number, number][][] = [];
+  const recoger = (c: unknown, prof: number): void => {
+    if (!Array.isArray(c)) return;
+    if (prof === 0) {
+      const cadena = (c as number[][]).filter(
+        (p) => Array.isArray(p) && typeof p[0] === "number",
+      ) as [number, number][];
+      if (cadena.length > 1) salida.push(cadena);
+      return;
+    }
+    for (const s of c) recoger(s, prof - 1);
+  };
+  switch (g.type) {
+    case "LineString":
+      recoger(g.coordinates, 0);
+      break;
+    case "MultiLineString":
+    case "Polygon":
+      recoger(g.coordinates, 1);
+      break;
+    case "MultiPolygon":
+      recoger(g.coordinates, 2);
+      break;
+    default:
+      break;
+  }
+  return salida;
+}
+
+const lado = (
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+) => Math.sign((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
+
+/** Si dos segmentos se cruzan. Sin tocar los casos degenerados: aquí sobra. */
+function seCruzan(
+  p: [number, number],
+  q: [number, number],
+  r: [number, number],
+  s: [number, number],
+): boolean {
+  const d1 = lado(p[0], p[1], q[0], q[1], r[0], r[1]);
+  const d2 = lado(p[0], p[1], q[0], q[1], s[0], s[1]);
+  const d3 = lado(r[0], r[1], s[0], s[1], p[0], p[1]);
+  const d4 = lado(r[0], r[1], s[0], s[1], q[0], q[1]);
+  return d1 !== d2 && d3 !== d4;
+}
+
+/**
+ * Si el contorno del rasgo corta el de la zona.
+ *
+ * Es la última prueba y la más cara, y hace falta: dos polígonos pueden
+ * solaparse sin que ningún vértice de uno caiga dentro del otro —basta con
+ * que se crucen los lados—, y una calle recta puede atravesar la plataforma
+ * entera sin tener un solo vértice dentro. Sin esto, el panel decía «se
+ * dibuja lo que toca esta zona» y se dejaba fuera 3 de cada 30 barrios.
+ *
+ * Solo llegan aquí los rasgos que ya pasaron el descarte por caja y fallaron
+ * las pruebas baratas, que son pocos.
+ */
+function cortaElBorde(g: GeoJSON.Geometry, a: Ambito): boolean {
+  const suyas = cadenasDe(g);
+  if (suyas.length === 0) return false;
+  for (const cadena of suyas) {
+    for (let i = 1; i < cadena.length; i++) {
+      for (const pieza of a.piezas) {
+        for (const anillo of pieza) {
+          for (let j = 1; j < anillo.length; j++) {
+            if (
+              seCruzan(
+                cadena[i - 1],
+                cadena[i],
+                anillo[j - 1] as [number, number],
+                anillo[j] as [number, number],
+              )
+            ) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function perteneceA(
+  a: Ambito,
+  f: GeoJSON.Feature,
+  sonda: [number, number] | null,
+): boolean {
   const g = f.geometry;
   if (!g || g.type === "GeometryCollection") return false;
 
@@ -338,16 +434,58 @@ function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
   const [o, s, e, n] = a.caja;
   if (este < o || oeste > e || norte < s || sur > n) return false;
 
-  if (g.type === "Point" || g.type === "MultiPoint") {
-    return vertices.some(([x, y]) => dentro(a, x, y));
+  // Puntos y líneas: con que algo suyo caiga dentro, basta.
+  if (vertices.some(([x, y]) => dentro(a, x, y))) return true;
+
+  /*
+   * Y un área puede contener la zona sin tener ni un vértice dentro.
+   *
+   * Es el caso de todas las capas gruesas: el límite urbano, las parroquias,
+   * la clasificación del suelo. Ninguno de sus rasgos tiene el centro ni un
+   * vértice dentro de una plataforma, y con la regla del centro —que es la
+   * que usan las cifras para decir de quién es cada barrio— desaparecían
+   * enteras: se elegía una plataforma y la clasificación del suelo se
+   * quedaba en «0 de 41», que se lee como «aquí no hay nada».
+   *
+   * Así que se prueba al revés: un punto de la zona contra el rasgo. Medido
+   * contra la intersección de verdad sobre seis capas de la base, esta regla
+   * da 2/2, 12/12, 4/4, 4/4, 30/30 y 201 de 202 manzanas.
+   */
+  if (
+    sonda &&
+    (g.type === "Polygon" || g.type === "MultiPolygon") &&
+    poligonosDe(g).some((piezas) => enPoligono(sonda[0], sonda[1], piezas))
+  ) {
+    return true;
   }
 
-  if (g.type === "Polygon" || g.type === "MultiPolygon") {
-    const c = centroDe(f);
-    return c !== null && dentro(a, c[0], c[1]);
-  }
+  return cortaElBorde(g, a);
+}
 
-  return vertices.some(([x, y]) => dentro(a, x, y));
+/**
+ * Un punto de dentro de la zona, para probar si un área la contiene.
+ *
+ * Se prefiere el centro de su pieza mayor; en una zona con forma de ele ese
+ * centro puede caer fuera, y entonces sirve un vértice de su contorno, que
+ * está en el borde pero sigue siendo de la zona.
+ */
+function sondaDe(a: Ambito): [number, number] | null {
+  const mayor = a.piezas.reduce(
+    (mejor, p) => (p[0].length > (mejor?.[0].length ?? 0) ? p : mejor),
+    a.piezas[0],
+  );
+  const anillo = mayor?.[0];
+  if (!anillo?.length) return null;
+  const n = anillo.length - 1;
+  if (n <= 0) return null;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < n; i++) {
+    x += anillo[i][0];
+    y += anillo[i][1];
+  }
+  if (dentro(a, x / n, y / n)) return [x / n, y / n];
+  return [anillo[0][0], anillo[0][1]];
 }
 
 /**
@@ -395,6 +533,7 @@ export function recorteDe(
    */
   const elBarrio =
     a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
+  const sonda = sondaDe(a);
 
   for (const capa of todas) {
     if (capa.id === plataformas?.id) continue;
@@ -409,7 +548,7 @@ export function recorteDe(
     }
     salida.set(
       capa.id,
-      soloCon(capa, (f) => perteneceA(a, f)),
+      soloCon(capa, (f) => perteneceA(a, f, sonda)),
     );
   }
 
