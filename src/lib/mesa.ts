@@ -20,34 +20,35 @@
  * Todo vive en el navegador de quien lo use. No viaja a ningún sitio, igual
  * que el resto de la aplicación.
  */
-import { ALMACEN_MESAS, conAlmacen } from './almacen'
-import type { Capa } from './cargar'
+import { ALMACEN_MESAS, conAlmacen } from "./almacen";
+import type { Paso } from "./flujo";
+import type { Capa } from "./cargar";
 
 /** Sube cuando la forma de lo guardado cambie y lo viejo deje de servir. */
-const VERSION_FORMATO = 1
+const VERSION_FORMATO = 1;
 
 /** La mesa que se guarda sola; las demás llevan el nombre que les pongan. */
-export const MESA_ACTUAL = 'actual'
+export const MESA_ACTUAL = "actual";
 
 /** Una capa guardada: entera, o apuntada para volver a traerla. */
 type CapaGuardada =
-  | { modo: 'datos'; capa: Capa }
+  | { modo: "datos"; capa: Capa }
   | {
-      modo: 'fuente'
-      fuente: { tipo: 'ejemplo' | 'municipio'; archivo: string }
+      modo: "fuente";
+      fuente: { tipo: "ejemplo" | "municipio"; archivo: string };
       /** Lo que el usuario cambió y hay que respetar al volver a traerla. */
-      id: string
-      nombre: string
-      color: string
-      visible: boolean
-    }
+      id: string;
+      nombre: string;
+      color: string;
+      visible: boolean;
+    };
 
 export interface Mesa {
-  nombre: string
-  version: number
-  guardadaEn: Date
-  capas: CapaGuardada[]
-  mapaBase: string
+  nombre: string;
+  version: number;
+  guardadaEn: Date;
+  capas: CapaGuardada[];
+  mapaBase: string;
   /**
    * En qué modo se estaba trabajando.
    *
@@ -56,17 +57,30 @@ export interface Mesa {
    * que los recuerda: por eso se guarda como texto libre y no como una lista
    * cerrada que habría que migrar.
    */
-  modo: string
+  modo: string;
+  /**
+   * El flujo que se estaba montando.
+   *
+   * Se guarda porque es trabajo, no resultado: la gracia de encadenar
+   * herramientas es volver a correr lo mismo el mes que viene o con otra
+   * capa, y para eso tiene que seguir ahí al abrir. Lo que NO se guarda es
+   * cómo quedó cada paso al correr: eso depende de unos datos que mañana
+   * pueden ser otros, y enseñar un «bien» de ayer sería mentir.
+   *
+   * Opcional porque las mesas guardadas antes de que existieran los flujos no
+   * lo traen, y una mesa vieja tiene que seguir abriéndose.
+   */
+  pasos?: Paso[];
   /** Cuánto ocupa, para poder decirlo. */
-  bytes: number
+  bytes: number;
 }
 
 /** Lo que se guarda, sin las cifras que se calculan al vuelo. */
 export interface MesaResumen {
-  nombre: string
-  guardadaEn: Date
-  capas: number
-  bytes: number
+  nombre: string;
+  guardadaEn: Date;
+  capas: number;
+  bytes: number;
 }
 
 /**
@@ -76,13 +90,13 @@ export interface MesaResumen {
  * exacto: pretende que quien vea «18 MB» entienda por qué guardar tarda.
  */
 function pesar(capas: CapaGuardada[]): number {
-  let bytes = 0
+  let bytes = 0;
   for (const c of capas) {
-    if (c.modo !== 'datos') continue
+    if (c.modo !== "datos") continue;
     // Una coordenada ronda los veinte caracteres entre corchetes y comas.
-    bytes += JSON.stringify(c.capa.geo).length
+    bytes += JSON.stringify(c.capa.geo).length;
   }
-  return bytes
+  return bytes;
 }
 
 /** Prepara las capas para guardar, apuntando las que se pueden volver a pedir. */
@@ -90,15 +104,15 @@ function aGuardadas(capas: Capa[]): CapaGuardada[] {
   return capas.map((capa) =>
     capa.fuente
       ? {
-          modo: 'fuente' as const,
+          modo: "fuente" as const,
           fuente: capa.fuente,
           id: capa.id,
           nombre: capa.nombre,
           color: capa.color,
           visible: capa.visible,
         }
-      : { modo: 'datos' as const, capa },
-  )
+      : { modo: "datos" as const, capa },
+  );
 }
 
 /** Guarda la mesa con ese nombre, pisando la anterior si la había. */
@@ -107,8 +121,9 @@ export async function guardar(
   capas: Capa[],
   mapaBase: string,
   modo: string,
+  pasos: Paso[] = [],
 ): Promise<Mesa> {
-  const guardadas = aGuardadas(capas)
+  const guardadas = aGuardadas(capas);
   const mesa: Mesa = {
     nombre,
     version: VERSION_FORMATO,
@@ -116,24 +131,31 @@ export async function guardar(
     capas: guardadas,
     mapaBase,
     modo,
+    pasos,
     bytes: pesar(guardadas),
-  }
-  await conAlmacen(ALMACEN_MESAS, 'readwrite', (s) => s.put(mesa))
-  return mesa
+  };
+  await conAlmacen(ALMACEN_MESAS, "readwrite", (s) => s.put(mesa));
+  return mesa;
 }
 
 /** Trae una mesa guardada, o null si no está o es de un formato viejo. */
 export async function traer(nombre: string): Promise<Mesa | null> {
-  const mesa = await conAlmacen<Mesa | undefined>(ALMACEN_MESAS, 'readonly', (s) => s.get(nombre))
-  if (!mesa) return null
+  const mesa = await conAlmacen<Mesa | undefined>(
+    ALMACEN_MESAS,
+    "readonly",
+    (s) => s.get(nombre),
+  );
+  if (!mesa) return null;
   // Una mesa de un formato anterior no se intenta adivinar: se ignora.
-  if (mesa.version !== VERSION_FORMATO) return null
-  return mesa
+  if (mesa.version !== VERSION_FORMATO) return null;
+  return mesa;
 }
 
 /** Las mesas guardadas, de la más reciente a la más antigua. */
 export async function listar(): Promise<MesaResumen[]> {
-  const todas = await conAlmacen<Mesa[]>(ALMACEN_MESAS, 'readonly', (s) => s.getAll())
+  const todas = await conAlmacen<Mesa[]>(ALMACEN_MESAS, "readonly", (s) =>
+    s.getAll(),
+  );
   return todas
     .filter((m) => m.version === VERSION_FORMATO)
     .map((m) => ({
@@ -142,11 +164,11 @@ export async function listar(): Promise<MesaResumen[]> {
       capas: m.capas.length,
       bytes: m.bytes,
     }))
-    .sort((a, b) => b.guardadaEn.getTime() - a.guardadaEn.getTime())
+    .sort((a, b) => b.guardadaEn.getTime() - a.guardadaEn.getTime());
 }
 
 export async function olvidar(nombre: string): Promise<void> {
-  await conAlmacen(ALMACEN_MESAS, 'readwrite', (s) => s.delete(nombre))
+  await conAlmacen(ALMACEN_MESAS, "readwrite", (s) => s.delete(nombre));
 }
 
 /**
@@ -160,49 +182,57 @@ export async function olvidar(nombre: string): Promise<void> {
 export async function reconstruir(
   mesa: Mesa,
   traerDeCatalogo: (
-    tipo: 'ejemplo' | 'municipio',
+    tipo: "ejemplo" | "municipio",
     archivo: string,
   ) => Promise<Capa | null>,
 ): Promise<{ capas: Capa[]; fallos: string[] }> {
-  const capas: Capa[] = []
-  const fallos: string[] = []
+  const capas: Capa[] = [];
+  const fallos: string[] = [];
   for (const guardada of mesa.capas) {
-    if (guardada.modo === 'datos') {
-      capas.push(guardada.capa)
-      continue
+    if (guardada.modo === "datos") {
+      capas.push(guardada.capa);
+      continue;
     }
     try {
-      const capa = await traerDeCatalogo(guardada.fuente.tipo, guardada.fuente.archivo)
-      if (!capa) throw new Error('ya no está en el catálogo')
+      const capa = await traerDeCatalogo(
+        guardada.fuente.tipo,
+        guardada.fuente.archivo,
+      );
+      if (!capa) throw new Error("ya no está en el catálogo");
       capas.push({
         ...capa,
         id: guardada.id,
         nombre: guardada.nombre,
         color: guardada.color,
         visible: guardada.visible,
-      })
+      });
     } catch (e) {
       fallos.push(
-        `${guardada.nombre}: ${e instanceof Error ? e.message : 'no se pudo volver a traer'}.`,
-      )
+        `${guardada.nombre}: ${e instanceof Error ? e.message : "no se pudo volver a traer"}.`,
+      );
     }
   }
-  return { capas, fallos }
+  return { capas, fallos };
 }
 
 /** El peso en una frase corta. */
 export function pesoLegible(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 }
 
 /** Cuándo se guardó, en una frase corta. */
 export function cuandoLegible(d: Date): string {
-  const minutos = Math.round((Date.now() - d.getTime()) / 60000)
-  if (minutos < 1) return 'hace un momento'
-  if (minutos < 60) return `hace ${minutos} min`
-  const horas = Math.round(minutos / 60)
-  if (horas < 24) return `hace ${horas} h`
-  return d.toLocaleDateString('es-EC', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+  const minutos = Math.round((Date.now() - d.getTime()) / 60000);
+  if (minutos < 1) return "hace un momento";
+  if (minutos < 60) return `hace ${minutos} min`;
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return `hace ${horas} h`;
+  return d.toLocaleDateString("es-EC", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

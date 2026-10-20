@@ -22,7 +22,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Mapa, { type Captura } from "./components/Mapa";
 import PanelCapas from "./components/PanelCapas";
-import PanelAnalisis from "./components/PanelAnalisis";
+import PanelFlujo from "./components/PanelFlujo";
+import {
+  correrFlujo,
+  valoresIniciales,
+  type Marcha,
+  type Paso,
+} from "./lib/flujo";
 import PanelGuiado from "./components/PanelGuiado";
 import PanelInforme, {
   INFORME_INICIAL,
@@ -39,11 +45,7 @@ import {
   recuadroDe,
   type PuntoAnalisis,
 } from "./lib/ambito";
-import {
-  HERRAMIENTAS,
-  herramientasPara,
-  type Herramienta,
-} from "./lib/herramientas";
+import { HERRAMIENTAS, type Herramienta } from "./lib/herramientas";
 import { diagnosticar, type Informe } from "./lib/diagnostico";
 import {
   CAPAS_MIRAR,
@@ -160,8 +162,6 @@ export default function App() {
 
   // Modo herramientas
   const [capaId, setCapaId] = useState<string | null>(null);
-  const [herramientaClave, setHerramientaClave] = useState<string | null>(null);
-  const [valores, setValores] = useState<Record<string, string>>({});
 
   // Informe
   const [ajustesInforme, setAjustesInforme] =
@@ -185,47 +185,7 @@ export default function App() {
   const [ofrecida, setOfrecida] = useState<Mesa | null>(null);
   const [recuperando, setRecuperando] = useState(false);
 
-  const capa = capas.find((c) => c.id === capaId) ?? null;
-  const herramienta =
-    HERRAMIENTAS.find((h) => h.clave === herramientaClave) ?? null;
   const receta = RECETAS.find((r) => r.clave === recetaClave) ?? null;
-
-  /** Lo que cada control vale al empezar: la primera opción, o nada. */
-  const arranque = useCallback((clave: string | null) => {
-    const h = HERRAMIENTAS.find((x) => x.clave === clave);
-    const base: Record<string, string> = {};
-    for (const p of h?.parametros ?? []) {
-      if (p.tipo === "opcion") base[p.clave] = p.defecto ?? p.opciones[0].valor;
-      else if (p.tipo === "numero") base[p.clave] = String(p.defecto);
-      else if (p.tipo === "valor") base[p.clave] = TODA_LA_CATEGORIA;
-      else base[p.clave] = "";
-    }
-    return base;
-  }, []);
-
-  const elegirHerramienta = useCallback(
-    (clave: string) => {
-      setHerramientaClave(clave);
-      setValores(arranque(clave));
-      setError(null);
-    },
-    [arranque],
-  );
-
-  /** Al cambiar de capa, la herramienta elegida puede dejar de valer. */
-  const elegirCapa = useCallback(
-    (id: string) => {
-      setCapaId(id || null);
-      const nueva = capas.find((c) => c.id === id) ?? null;
-      const sirven = herramientasPara(nueva);
-      const sigue = sirven.find((h) => h.clave === herramientaClave);
-      const elegida = sigue?.clave ?? sirven[0]?.clave ?? null;
-      setHerramientaClave(elegida);
-      setValores(arranque(elegida));
-      setError(null);
-    },
-    [capas, herramientaClave, arranque],
-  );
 
   const elegirReceta = useCallback((clave: string) => {
     setRecetaClave((previa) => (previa === clave ? null : clave));
@@ -293,14 +253,9 @@ export default function App() {
           },
         ]);
       }
-      if (!capaId) {
-        setCapaId(nuevas[0].id);
-        const primera = herramientasPara(nuevas[0])[0]?.clave ?? null;
-        setHerramientaClave(primera);
-        setValores(arranque(primera));
-      }
+      if (!capaId) setCapaId(nuevas[0].id);
     },
-    [capaId, arranque],
+    [capaId],
   );
 
   const leer = useCallback(
@@ -414,10 +369,56 @@ export default function App() {
     [capas],
   );
 
-  const correrHerramienta = useCallback(() => {
-    if (!capa || !herramienta) return;
-    ejecutar(capa, herramienta, valores);
-  }, [capa, herramienta, valores, ejecutar]);
+  /*
+   * El flujo: los pasos y cómo quedó cada uno la última vez que corrió.
+   *
+   * Los pasos se guardan con la mesa —son el trabajo—, y las marchas no: son
+   * el resultado de haber corrido, y al volver mañana los datos pueden ser
+   * otros. Enseñar un «bien» de ayer sobre una capa que cambió sería mentir.
+   */
+  const [pasos, setPasos] = useState<Paso[]>([]);
+  const [marchas, setMarchas] = useState<Marcha[]>([]);
+
+  const correrElFlujo = useCallback(() => {
+    if (pasos.length === 0) return;
+    setCalculando(true);
+    setError(null);
+    // La misma pausa que en una herramienta suelta: los cálculos son
+    // sincrónicos y sin esto el navegador no llega a pintar el «Corriendo…».
+    setTimeout(() => {
+      const { marchas: nuevas, hechos } = correrFlujo(pasos, capas);
+      setMarchas(nuevas);
+      /*
+       * Solo se enseña en el mapa lo que dejó el ÚLTIMO paso que salió bien.
+       *
+       * Las capas intermedias existen y se pueden guardar una a una desde su
+       * paso; volcarlas todas a la mesa en cada carrera la llenaría de
+       * resultados que nadie pidió y que además cambian al volver a correr.
+       */
+      const ultima = [...nuevas].reverse().find((m) => m.capa)?.capa;
+      if (ultima) {
+        setCapas((previas) => [
+          ultima,
+          ...previas.filter((c) => c.id !== ultima.id),
+        ]);
+        setUltimo({ puntos: [], ambito: null, capaId: ultima.id });
+      }
+      const fallo = nuevas.find((m) => m.estado === "mal");
+      if (fallo) {
+        const cual = pasos.findIndex((x) => x.id === fallo.paso) + 1;
+        setError(`El flujo se paró en el paso ${cual}: ${fallo.error}`);
+      }
+      setCalculando(false);
+      void hechos;
+    }, 30);
+  }, [pasos, capas]);
+
+  /** Deja en la mesa la capa que produjo un paso. */
+  const guardarDeFlujo = useCallback((c: Capa) => {
+    setCapas((previas) =>
+      previas.some((x) => x.id === c.id) ? previas : [c, ...previas],
+    );
+  }, []);
 
   const correrReceta = useCallback(() => {
     if (!receta) return;
@@ -434,11 +435,11 @@ export default function App() {
     const { [ENTRADA]: _entrada, ...resto } = valoresGuiado;
     void _entrada;
     ejecutar(entrada, h, {
-      ...arranque(h.clave),
+      ...valoresIniciales(h.clave),
       ...(receta.fijos ?? {}),
       ...resto,
     });
-  }, [receta, valoresGuiado, capas, ejecutar, arranque]);
+  }, [receta, valoresGuiado, capas, ejecutar]);
 
   /**
    * El informe: el diagnóstico escrito y las dos capas que lo ilustran.
@@ -482,7 +483,7 @@ export default function App() {
           capa: reg,
           capas,
           valores: {
-            ...arranque("agregar-puntos"),
+            ...valoresIniciales("agregar-puntos"),
             zonas: capaZonas.id,
             estadistico: "cuenta",
             campo: campo ?? "",
@@ -500,7 +501,7 @@ export default function App() {
         capa: reg,
         capas,
         valores: {
-          ...arranque("hotspot"),
+          ...valoresIniciales("hotspot"),
           campo: campo ?? "",
           valor: TODA_LA_CATEGORIA,
           ambito: capaAmbito?.id ?? "",
@@ -532,7 +533,7 @@ export default function App() {
       setRecados([]);
       setCalculando(false);
     }, 30);
-  }, [ajustesInforme, capas, arranque]);
+  }, [ajustesInforme, capas]);
 
   const abrirLamina = useCallback(async () => {
     // La foto se resuelve cuando el mapa deja de dibujar; puede tardar un par
@@ -546,17 +547,26 @@ export default function App() {
   const quitar = useCallback(
     (id: string) => {
       setCapas((cs) => cs.filter((c) => c.id !== id));
-      if (capaId === id) {
-        setCapaId(null);
-        setHerramientaClave(null);
-        setValores({});
-      }
+      if (capaId === id) setCapaId(null);
       const limpiar = (v: Record<string, string>) =>
         Object.fromEntries(
           Object.entries(v).map(([k, x]) => [k, x === id ? "" : x]),
         );
-      setValores(limpiar);
       setValoresGuiado(limpiar);
+      /*
+       * Y de los pasos del flujo.
+       *
+       * Un paso que apunte a una capa que ya no está se queda sin entrada: es
+       * mejor dejarlo vacío —y que el paso lo diga— que guardar un
+       * identificador que no lleva a ninguna parte.
+       */
+      setPasos((ps) =>
+        ps.map((x) => ({
+          ...x,
+          entrada: x.entrada === id ? "" : x.entrada,
+          valores: limpiar(x.valores),
+        })),
+      );
       setAjustesInforme((a) => ({
         ...a,
         registros: a.registros === id ? "" : a.registros,
@@ -607,6 +617,15 @@ export default function App() {
     );
     setCapas(suyas);
     setMapaBase(ofrecida.mapaBase);
+    /*
+     * El flujo vuelve; cómo quedó al correr, no.
+     *
+     * Las marchas se quedan vacías a propósito: dicen cómo fue la última
+     * carrera, y esa carrera fue sobre los datos de entonces. Que el paso
+     * aparezca sin estado obliga a volver a correrlo, que es lo correcto.
+     */
+    setPasos(ofrecida.pasos ?? []);
+    setMarchas([]);
     const guardado = MODOS_VIEJOS[ofrecida.modo] ?? ofrecida.modo;
     if (
       guardado === "mirar" ||
@@ -636,7 +655,7 @@ export default function App() {
     if (ofrecida || recuperando) return;
     if (capas.length === 0) return;
     const reloj = setTimeout(() => {
-      void guardarMesa(MESA_ACTUAL, capas, mapaBase, modo)
+      void guardarMesa(MESA_ACTUAL, capas, mapaBase, modo, pasos)
         .then(setMesaGuardada)
         .catch(() =>
           setRecados((previos) => [
@@ -649,7 +668,7 @@ export default function App() {
         );
     }, 1500);
     return () => clearTimeout(reloj);
-  }, [capas, mapaBase, modo, ofrecida, recuperando]);
+  }, [capas, mapaBase, modo, pasos, ofrecida, recuperando]);
 
   const olvidar = useCallback(async () => {
     await olvidarMesa(MESA_ACTUAL);
@@ -1143,17 +1162,14 @@ export default function App() {
                       error={error}
                     />
                   ) : (
-                    <PanelAnalisis
+                    <PanelFlujo
                       capas={capas}
-                      capa={capa}
-                      onCapa={elegirCapa}
-                      herramienta={herramienta}
-                      onHerramienta={elegirHerramienta}
-                      valores={valores}
-                      onValores={setValores}
-                      calculando={calculando}
-                      onCorrer={correrHerramienta}
-                      error={error}
+                      pasos={pasos}
+                      onPasos={setPasos}
+                      marchas={marchas}
+                      corriendo={calculando}
+                      onCorrer={correrElFlujo}
+                      onGuardar={guardarDeFlujo}
                     />
                   )}
                 </>
