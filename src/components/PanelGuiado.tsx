@@ -9,7 +9,7 @@
  * frase.
  */
 import type { Capa } from '../lib/cargar'
-import { ENTRADA, RECETAS, type Hueco, type Receta } from '../lib/recetas'
+import { ENTRADA, RECETAS, factibilidad, type Hueco, type Receta } from '../lib/recetas'
 import { numero } from '../lib/format'
 
 const FORMA: Record<Capa['forma'], string> = {
@@ -54,11 +54,17 @@ export default function PanelGuiado({
   }
 
   const huecos = (r: Receta) => r.frase.filter((p): p is Hueco => typeof p !== 'string')
-  /** Una receta se puede usar si hay capa para cada hueco que pide una. */
-  const sePuede = (r: Receta) =>
-    huecos(r)
-      .filter((h) => h.tipo === 'capa')
-      .every((h) => capasPara(capas, h).length > 0)
+
+  /*
+   * Qué se puede responder con lo que hay cargado ahora.
+   *
+   * Se calcula una sola vez y se reparte en dos listas en vez de dejar las
+   * imposibles atenuadas entre las demás: con trece preguntas, «atenuada» se
+   * lee como «esta es menos importante», no como «con tus datos, esta no».
+   */
+  const veredictos = new Map(RECETAS.map((r) => [r.clave, factibilidad(r, capas)]))
+  const puedo = RECETAS.filter((r) => veredictos.get(r.clave)?.puede)
+  const noPuedo = RECETAS.filter((r) => !veredictos.get(r.clave)?.puede)
 
   const entradaElegida = receta
     ? (capas.find((c) => c.id === valores[ENTRADA]) ?? null)
@@ -144,81 +150,90 @@ export default function PanelGuiado({
     )
   }
 
+  const tarjeta = (r: Receta) => {
+    const activa = receta?.clave === r.clave
+    const v = veredictos.get(r.clave)
+    const usable = v?.puede ?? false
+    return (
+      <li key={r.clave}>
+        <button
+          type="button"
+          onClick={() => onReceta(r.clave)}
+          className={`w-full rounded-md border p-2 text-left ${
+            activa
+              ? 'border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]'
+              : usable
+                ? 'border-[var(--gr-linea)] bg-[var(--gr-superficie)] hover:border-[var(--gr-azul-500)]'
+                : 'border-[var(--gr-linea)] bg-transparent opacity-70'
+          }`}
+        >
+          <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
+            {r.pregunta}
+          </span>
+          {!usable && (
+            <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-aviso)]">
+              {v?.falta} {r.sugerencia}
+            </span>
+          )}
+        </button>
+
+        {activa && (
+          <div className="mt-1.5 space-y-2 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2">
+            <p className="text-sm leading-7 text-[var(--gr-tinta)]">
+              {r.frase.map((parte, i) =>
+                typeof parte === 'string' ? <span key={i}> {parte} </span> : hueco(parte, i),
+              )}
+            </p>
+
+            <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+              <span className="font-semibold">Devuelve: </span>
+              {r.devuelve}
+            </p>
+
+            <button
+              type="button"
+              onClick={onCorrer}
+              disabled={calculando || !listo}
+              className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {calculando ? 'Calculando…' : listo ? 'Ver el resultado' : 'Completa la frase'}
+            </button>
+
+            {error && (
+              <p className="rounded border border-[var(--gr-error)] px-2 py-1 text-[11px] leading-snug text-[var(--gr-error)]">
+                {error}
+              </p>
+            )}
+          </div>
+        )}
+      </li>
+    )
+  }
+
   return (
     <section className="space-y-2">
       <p className="text-xs leading-snug text-[var(--gr-tinta-3)]">
-        Elige una pregunta y completa la frase. Por debajo corre la misma herramienta
-        que en la otra pestaña, con los huecos ya puestos en su sitio.
+        Estas son las preguntas que tus capas responden ahora mismo. Completa la frase
+        y por debajo corre la misma herramienta que en la otra pestaña.
       </p>
 
-      <ul className="space-y-1.5">
-        {RECETAS.map((r) => {
-          const activa = receta?.clave === r.clave
-          const usable = sePuede(r)
-          return (
-            <li key={r.clave}>
-              <button
-                type="button"
-                onClick={() => onReceta(r.clave)}
-                className={`w-full rounded-md border p-2 text-left ${
-                  activa
-                    ? 'border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]'
-                    : usable
-                      ? 'border-[var(--gr-linea)] bg-[var(--gr-superficie)] hover:border-[var(--gr-azul-500)]'
-                      : 'border-[var(--gr-linea)] bg-transparent opacity-60'
-                }`}
-              >
-                <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
-                  {r.pregunta}
-                </span>
-                {!usable && (
-                  <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-aviso)]">
-                    Falta cargar una capa que sirva. {r.sugerencia}
-                  </span>
-                )}
-              </button>
+      {puedo.length > 0 && (
+        <ul className="space-y-1.5">{puedo.map(tarjeta)}</ul>
+      )}
 
-              {activa && (
-                <div className="mt-1.5 space-y-2 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2">
-                  <p className="text-sm leading-7 text-[var(--gr-tinta)]">
-                    {r.frase.map((parte, i) =>
-                      typeof parte === 'string' ? (
-                        <span key={i}> {parte} </span>
-                      ) : (
-                        hueco(parte, i)
-                      ),
-                    )}
-                  </p>
-
-                  <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-                    <span className="font-semibold">Devuelve: </span>
-                    {r.devuelve}
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={onCorrer}
-                    disabled={calculando || !listo}
-                    className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {calculando ? 'Calculando…' : listo ? 'Ver el resultado' : 'Completa la frase'}
-                  </button>
-
-                  {error && (
-                    <p className="rounded border border-[var(--gr-error)] px-2 py-1 text-[11px] leading-snug text-[var(--gr-error)]">
-                      {error}
-                    </p>
-                  )}
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      {noPuedo.length > 0 && (
+        <details className="rounded-md border border-[var(--gr-linea)]">
+          <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-[var(--gr-tinta-2)]">
+            {numero(noPuedo.length)}{' '}
+            {noPuedo.length === 1 ? 'pregunta necesita' : 'preguntas necesitan'} otros datos
+          </summary>
+          <ul className="space-y-1.5 px-2 pb-2">{noPuedo.map(tarjeta)}</ul>
+        </details>
+      )}
 
       <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-        {numero(RECETAS.length)} preguntas. Si lo que buscas no está, la pestaña de
-        herramientas tiene la caja entera.
+        {numero(puedo.length)} de {numero(RECETAS.length)} preguntas con lo que tienes
+        cargado. Si lo que buscas no está, la pestaña de herramientas tiene la caja entera.
       </p>
     </section>
   )

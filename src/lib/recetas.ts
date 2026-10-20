@@ -14,7 +14,7 @@
  *
  * Quien sepa SIG tiene la caja entera a un clic, en la otra pestaña.
  */
-import type { Forma } from './cargar'
+import type { Capa, Forma } from './cargar'
 
 /** Un hueco de la frase, que el usuario rellena. */
 export interface Hueco {
@@ -42,7 +42,7 @@ export interface Receta {
   herramienta: string
   /** Parámetros que la receta fija sin preguntar. */
   fijos?: Record<string, string>
-  /** Con los datos de ejemplo, qué elegir; se enseña como sugerencia. */
+  /** Un ejemplo de lo que esta pregunta responde. Acompaña al aviso de qué falta. */
   sugerencia?: string
 }
 
@@ -66,7 +66,7 @@ export const RECETAS: Receta[] = [
       'Los registros pintados del más antiguo al más reciente, y la cuenta de cada mes con su acumulado.',
     herramienta: 'avance-tiempo',
     fijos: { paso: 'mes' },
-    sugerencia: 'Hace falta una capa que traiga una columna de fechas.',
+    sugerencia: 'Los trámites por su fecha de ingreso.',
   },
   {
     clave: 'contar',
@@ -151,7 +151,7 @@ export const RECETAS: Receta[] = [
     ],
     devuelve: 'Las zonas con las hectáreas que les toca y el porcentaje que ocupan.',
     herramienta: 'agregar-poligonos',
-    sugerencia: 'Hace falta cargar una capa de suelo o de uso.',
+    sugerencia: 'El uso del suelo en cada plataforma.',
   },
   {
     clave: 'kilometros',
@@ -177,7 +177,7 @@ export const RECETAS: Receta[] = [
     ],
     devuelve: 'El reparto por clase, en hectáreas y en porcentaje.',
     herramienta: 'superficie-clase',
-    sugerencia: 'Hace falta una capa de clasificación del suelo.',
+    sugerencia: 'Las hectáreas de cada clase de suelo.',
   },
   {
     clave: 'sectores',
@@ -224,3 +224,76 @@ export const RECETAS: Receta[] = [
 ]
 
 export { ENTRADA }
+
+/* ------------------------------------------------------------------ *
+ * Qué se puede responder con lo que hay cargado
+ * ------------------------------------------------------------------ */
+
+/** El veredicto de una pregunta frente a las capas de la mesa. */
+export interface Veredicto {
+  puede: boolean
+  /** Qué falta exactamente, en una línea. Vacío cuando sí se puede. */
+  falta: string
+}
+
+const NOMBRE_FORMA: Record<Forma, string> = {
+  punto: 'de puntos',
+  linea: 'de líneas',
+  poligono: 'de áreas',
+  mixta: 'de formas mezcladas',
+}
+
+/** Cómo se llama lo que pide un hueco: «una capa de áreas», «una capa». */
+function pideCapa(formas: Forma[]): string {
+  // «mixta» acompaña siempre a otra forma: nombrarla no añade nada y
+  // «una capa de áreas o de formas mezcladas» no lo entiende nadie.
+  const propias = formas.filter((f) => f !== 'mixta')
+  if (propias.length === 0 || propias.length >= 3) return 'una capa'
+  return `una capa ${propias.map((f) => NOMBRE_FORMA[f]).join(' o ')}`
+}
+
+const capasPara = (capas: Capa[], h: Hueco) =>
+  capas.filter((c) => (h.formas ?? []).includes(c.forma))
+
+/** Un campo sirve para agrupar si repite valores y no es un identificador. */
+const tieneClases = (c: Capa) => c.campos.some((f) => f.distintos > 1 && f.distintos <= 200)
+
+/**
+ * Si una pregunta se puede responder ahora mismo, y si no, qué falta.
+ *
+ * Antes esto solo miraba las capas, y por eso «¿Cómo avanzó mes a mes?» se
+ * ofrecía como disponible con cualquier capa cargada: la pregunta pide además
+ * una columna de fechas, y eso no se veía hasta abrir la frase y encontrarse
+ * el desplegable diciendo «esa capa no trae fechas». La comprobación del campo
+ * va contra las capas que pueden ocupar el hueco de entrada, porque el campo
+ * se elige siempre sobre esa capa.
+ */
+export function factibilidad(r: Receta, capas: Capa[]): Veredicto {
+  const huecos = r.frase.filter((x): x is Hueco => typeof x !== 'string')
+
+  for (const h of huecos) {
+    if (h.tipo !== 'capa') continue
+    if (capasPara(capas, h).length === 0) {
+      return { puede: false, falta: `No hay cargada ${pideCapa(h.formas ?? [])}.` }
+    }
+  }
+
+  const entrada = huecos.find((h) => h.clave === ENTRADA && h.tipo === 'capa')
+  const posibles = entrada ? capasPara(capas, entrada) : capas
+
+  for (const h of huecos) {
+    if (h.tipo !== 'campo') continue
+    if (h.soloFecha) {
+      if (!posibles.some((c) => (c.fechas ?? []).length > 0)) {
+        return { puede: false, falta: 'Ninguna capa que sirva trae una columna de fechas.' }
+      }
+    } else if (!posibles.some(tieneClases)) {
+      return {
+        puede: false,
+        falta: 'Ninguna capa que sirva trae una columna con valores que se repitan.',
+      }
+    }
+  }
+
+  return { puede: true, falta: '' }
+}

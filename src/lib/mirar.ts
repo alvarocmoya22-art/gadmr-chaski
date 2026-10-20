@@ -134,6 +134,28 @@ const dentro = (a: Ambito, lon: number, lat: number) =>
   a.piezas.some((p) => enPoligono(lon, lat, p))
 
 /**
+ * El centro de un área, que es por donde se decide a qué ámbito pertenece.
+ *
+ * Está aquí fuera a propósito: lo usan las cifras y el recorte del mapa, y
+ * **tienen que decidir igual**. Si se separaran, el mapa enseñaría un barrio
+ * que la cuenta no cuenta y no habría manera de saber cuál de los dos miente.
+ */
+function centroDe(f: GeoJSON.Feature): [number, number] | null {
+  const anillo = piezasDeRasgo(f)[0]?.[0]
+  if (!anillo?.length) return null
+  // El último punto repite el primero: contarlo correría el centro.
+  const n = anillo.length - 1
+  if (n <= 0) return null
+  let x = 0
+  let y = 0
+  for (let i = 0; i < n; i++) {
+    x += anillo[i][0]
+    y += anillo[i][1]
+  }
+  return [x / n, y / n]
+}
+
+/**
  * Las cifras de un ámbito, listas para la franja.
  *
  * «Equipamientos por cada mil habitantes» es la que de verdad se discute en
@@ -165,18 +187,8 @@ export function leerAmbito(
   if (barrios && a.nivel !== 'barrio') {
     let cuantos = 0
     for (const f of barrios.geo.features) {
-      const piezas = piezasDeRasgo(f)
-      const anillo = piezas[0]?.[0]
-      if (!anillo?.length) continue
-      // El centro del barrio decide a qué ámbito pertenece.
-      const n = anillo.length - 1
-      let x = 0
-      let y = 0
-      for (let i = 0; i < n; i++) {
-        x += anillo[i][0]
-        y += anillo[i][1]
-      }
-      if (dentro(a, x / n, y / n)) cuantos++
+      const c = centroDe(f)
+      if (c && dentro(a, c[0], c[1])) cuantos++
     }
     cifras.push({ etiqueta: 'Barrios', valor: numero(cuantos) })
   }
@@ -210,6 +222,83 @@ export function leerAmbito(
   }
 
   return { cifras, tipos }
+}
+
+/** Las tres capas de Mirar, cada una con la que toca. */
+export interface CapasMirar {
+  plataformas: Capa | null
+  barrios: Capa | null
+  equipamientos: Capa | null
+}
+
+const VACIA: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
+
+const soloCon = (capa: Capa, quedarse: (f: GeoJSON.Feature, i: number) => boolean) => ({
+  type: 'FeatureCollection' as const,
+  features: capa.geo.features.filter(quedarse),
+})
+
+/**
+ * Lo que el mapa debe dibujar de cada capa cuando hay una zona elegida.
+ *
+ * Elegir una plataforma y que el mapa siga pintando los 1.083 equipamientos y
+ * los 212 barrios de toda la ciudad no es un detalle: el panel pasa a hablar
+ * de la plataforma mientras el mapa sigue hablando de Riobamba entera, y lo
+ * que se lee encima del mapa deja de corresponder con lo que se ve.
+ *
+ * Devuelve un recorte por identificador de capa. Vacío significa «dibújalo
+ * todo», que es lo que toca en el ámbito urbano.
+ *
+ * Esto **no toca la mesa**: la capa sigue entera: lo que cambia es lo que se
+ * enseña. Al volver a «Riobamba urbano» reaparece todo sin recargar nada.
+ */
+export function recorteDe(
+  a: Ambito,
+  capas: CapasMirar,
+): Map<string, GeoJSON.FeatureCollection> {
+  const salida = new Map<string, GeoJSON.FeatureCollection>()
+  if (a.nivel === 'urbano') return salida
+
+  const { plataformas, barrios, equipamientos } = capas
+
+  if (plataformas) {
+    // En una plataforma se deja solo esa. En un barrio no se deja ninguna: la
+    // zona ya se dibuja aparte y la plataforma entera solo taparía el barrio.
+    const clave = a.nivel === 'plataforma' ? a.clave.slice('plataforma:'.length) : null
+    salida.set(
+      plataformas.id,
+      clave === null
+        ? VACIA
+        : soloCon(plataformas, (f) => texto(f.properties?.clave) === clave),
+    )
+  }
+
+  if (barrios) {
+    const indice = a.nivel === 'barrio' ? Number(a.clave.slice('barrio:'.length)) : null
+    salida.set(
+      barrios.id,
+      indice !== null
+        ? soloCon(barrios, (_f, i) => i === indice)
+        : soloCon(barrios, (f) => {
+            const c = centroDe(f)
+            return c !== null && dentro(a, c[0], c[1])
+          }),
+    )
+  }
+
+  if (equipamientos) {
+    salida.set(
+      equipamientos.id,
+      soloCon(equipamientos, (f) => {
+        const g = f.geometry
+        if (!g || g.type !== 'Point') return false
+        const [lon, lat] = g.coordinates as [number, number]
+        return dentro(a, lon, lat)
+      }),
+    )
+  }
+
+  return salida
 }
 
 /** Las capas que el modo Mirar necesita tener cargadas. */

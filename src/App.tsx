@@ -32,7 +32,7 @@ import { leerArchivo, type Capa } from './lib/cargar'
 import { cajaDeCapa, piezasDe, puntosDe, recuadroDe, type PuntoAnalisis } from './lib/ambito'
 import { HERRAMIENTAS, herramientasPara, type Herramienta } from './lib/herramientas'
 import { diagnosticar, type Informe } from './lib/diagnostico'
-import { CAPAS_MIRAR, ambitosDe, cargarPoblacion, leerAmbito } from './lib/mirar'
+import { CAPAS_MIRAR, ambitosDe, cargarPoblacion, leerAmbito, recorteDe } from './lib/mirar'
 import {
   explicarFallo,
   listarColecciones,
@@ -684,6 +684,22 @@ export default function App() {
     [ambito, capasMirar.equipamientos, capasMirar.barrios],
   )
 
+  /**
+   * Lo que se dibuja, que no siempre es lo que hay en la mesa.
+   *
+   * Con una zona elegida en Mirar, el mapa enseña esa zona y lo que cae
+   * dentro. La mesa no se toca: al volver al ámbito urbano reaparece todo.
+   */
+  const capasDibujadas = useMemo(() => {
+    if (modo !== 'mirar' || !ambito) return capas
+    const recorte = recorteDe(ambito, capasMirar)
+    if (recorte.size === 0) return capas
+    return capas.map((c) => {
+      const geo = recorte.get(c.id)
+      return geo ? { ...c, geo } : c
+    })
+  }, [modo, ambito, capas, capasMirar])
+
   /** Trae de una vez las capas que el modo Mirar necesita. */
   const traerTerritorio = useCallback(async () => {
     const faltan = CAPAS_MIRAR.filter((c) => !porNombre(c.nombre)).map((c) => c.archivo)
@@ -1008,7 +1024,7 @@ export default function App() {
 
           <main className="min-w-0 flex-1">
             <Mapa
-              capas={capas}
+              capas={capasDibujadas}
               puntos={puntos}
               ambito={ultimo?.ambito ?? null}
               mapaBase={mapaBase}
