@@ -19,6 +19,8 @@ interface Props {
   cifras: Fila[];
   tipos: Fila[];
   fuentePoblacion: string | null;
+  /** Cuánto queda de cada capa dentro de la zona elegida. */
+  enZona: { nombre: string; dentro: number; total: number }[];
 }
 
 export default function PanelMirar({
@@ -31,6 +33,7 @@ export default function PanelMirar({
   cifras,
   tipos,
   fuentePoblacion,
+  enZona,
 }: Props) {
   if (!listo) {
     return (
@@ -95,6 +98,36 @@ export default function PanelMirar({
           ))}
         </select>
       </div>
+
+      {actual && actual.nivel !== "urbano" && (
+        <div className="rounded border border-[var(--gr-linea)] px-2 py-1.5">
+          {enZona.length > 0 && (
+            <table className="mb-1.5 w-full text-[11px]">
+              <tbody>
+                {enZona.map((c) => (
+                  <tr key={c.nombre}>
+                    <th className="py-0.5 pr-2 text-left font-normal text-[var(--gr-tinta-3)]">
+                      {c.nombre}
+                    </th>
+                    <td className="py-0.5 text-right text-[var(--gr-tinta-2)]">
+                      <span className="font-semibold text-[var(--gr-tinta)]">
+                        {numero(c.dentro)}
+                      </span>{" "}
+                      de {numero(c.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            Tus capas se recortan a esta zona: las áreas por su centro, las
+            líneas si entran y los puntos si caen dentro. No se corta ninguna
+            geometría — para eso está «¿Qué parte de esta capa cae dentro de
+            aquella?», en Analizar.
+          </p>
+        </div>
+      )}
 
       <div>
         <span className={rotulo}>

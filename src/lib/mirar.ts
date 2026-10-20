@@ -282,6 +282,75 @@ const soloCon = (
 });
 
 /**
+ * Si un rasgo pertenece al ámbito, y por tanto se queda al recortar.
+ *
+ * La regla cambia con la geometría, y cada caso tiene su razón:
+ *
+ * - **Punto**: cae dentro, o no. No hay más que discutir.
+ * - **Área**: manda su centro. Es el mismo criterio con el que se cuentan los
+ *   barrios en las cifras, y tiene que seguir siendo el mismo: si el mapa
+ *   enseñara toda área que roza el límite y la cuenta solo las que tienen el
+ *   centro dentro, los dos números del panel dejarían de cuadrar con el dibujo.
+ * - **Línea**: basta con que entre. Una calle que cruza la plataforma es de la
+ *   plataforma; quedarse solo con el trozo de dentro le cambiaría la longitud
+ *   a cada tramo, y entonces medir kilómetros sobre la capa recortada daría un
+ *   número que no es el de ninguna calle real.
+ *
+ * El recorte **no corta geometrías**: deja pasar el rasgo entero o no lo deja
+ * pasar. Para cortar de verdad por un límite está la herramienta «recortar»,
+ * que es una operación con resultado, no una forma de mirar.
+ */
+function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
+  const g = f.geometry;
+  if (!g || g.type === "GeometryCollection") return false;
+
+  /*
+   * Primero la caja, que es barata.
+   *
+   * Lo caro es el punto-en-polígono, y con el catastro son cuarenta mil
+   * predios: sin este descarte previo, elegir una plataforma dejaría la
+   * pantalla colgada unos segundos cada vez.
+   */
+  let oeste = Infinity;
+  let sur = Infinity;
+  let este = -Infinity;
+  let norte = -Infinity;
+  const vertices: [number, number][] = [];
+  const recorrer = (c: unknown): void => {
+    if (
+      Array.isArray(c) &&
+      typeof c[0] === "number" &&
+      typeof c[1] === "number"
+    ) {
+      const x = c[0];
+      const y = c[1];
+      if (x < oeste) oeste = x;
+      if (x > este) este = x;
+      if (y < sur) sur = y;
+      if (y > norte) norte = y;
+      vertices.push([x, y]);
+      return;
+    }
+    if (Array.isArray(c)) for (const s of c) recorrer(s);
+  };
+  recorrer(g.coordinates);
+  if (vertices.length === 0) return false;
+  const [o, s, e, n] = a.caja;
+  if (este < o || oeste > e || norte < s || sur > n) return false;
+
+  if (g.type === "Point" || g.type === "MultiPoint") {
+    return vertices.some(([x, y]) => dentro(a, x, y));
+  }
+
+  if (g.type === "Polygon" || g.type === "MultiPolygon") {
+    const c = centroDe(f);
+    return c !== null && dentro(a, c[0], c[1]);
+  }
+
+  return vertices.some(([x, y]) => dentro(a, x, y));
+}
+
+/**
  * Lo que el mapa debe dibujar de cada capa cuando hay una zona elegida.
  *
  * Elegir una plataforma y que el mapa siga pintando los 1.083 equipamientos y
@@ -297,10 +366,11 @@ const soloCon = (
  */
 export function recorteDe(
   a: Ambito,
+  todas: Capa[],
   capas: CapasMirar,
 ): Map<string, GeoJSON.FeatureCollection> {
   const salida = new Map<string, GeoJSON.FeatureCollection>();
-  const { plataformas, barrios, equipamientos } = capas;
+  const { plataformas, barrios } = capas;
   const urbano = a.nivel === "urbano";
 
   if (plataformas) {
@@ -311,29 +381,35 @@ export function recorteDe(
     salida.set(plataformas.id, VACIA);
   }
 
-  if (barrios && !urbano) {
-    const indice =
-      a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
-    salida.set(
-      barrios.id,
-      indice !== null
-        ? soloCon(barrios, (_f, i) => i === indice)
-        : soloCon(barrios, (f) => {
-            const c = centroDe(f);
-            return c !== null && dentro(a, c[0], c[1]);
-          }),
-    );
-  }
+  if (urbano) return salida;
 
-  if (equipamientos && !urbano) {
+  /*
+   * Todas las demás capas se recortan, no solo las tres del municipio.
+   *
+   * Es lo que hace que el filtro signifique algo: si se elige la plataforma D
+   * y la vialidad que uno acaba de traer de la base sigue dibujada de punta a
+   * punta del cantón, lo que se lee en el panel habla de D y lo que se ve
+   * habla de otra cosa. Vale para cualquier capa —un archivo soltado, una
+   * tabla de PostGIS o el resultado de una herramienta—, porque todas se
+   * miran igual.
+   */
+  const elBarrio =
+    a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
+
+  for (const capa of todas) {
+    if (capa.id === plataformas?.id) continue;
+    // Elegido un barrio, de la capa de barrios se deja ese y no sus vecinos:
+    // por el centro pasarían también los que comparten límite.
+    if (elBarrio !== null && capa.id === barrios?.id) {
+      salida.set(
+        capa.id,
+        soloCon(capa, (_f, i) => i === elBarrio),
+      );
+      continue;
+    }
     salida.set(
-      equipamientos.id,
-      soloCon(equipamientos, (f) => {
-        const g = f.geometry;
-        if (!g || g.type !== "Point") return false;
-        const [lon, lat] = g.coordinates as [number, number];
-        return dentro(a, lon, lat);
-      }),
+      capa.id,
+      soloCon(capa, (f) => perteneceA(a, f)),
     );
   }
 

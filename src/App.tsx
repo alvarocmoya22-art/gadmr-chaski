@@ -713,9 +713,9 @@ export default function App() {
                 // exactamente lo que hacía que los ejes viales salieran a
                 // medias sin que nada avisara.
                 `${nueva.nombre}: ${numero(nueva.geo.features.length)} registros de la base.` +
-                  (sinGeometria > 0
-                    ? ` ${numero(sinGeometria)} ${sinGeometria === 1 ? 'fila venía' : 'filas venían'} sin geometría y no se ${sinGeometria === 1 ? 'dibuja' : 'dibujan'}.`
-                    : ''),
+                (sinGeometria > 0
+                  ? ` ${numero(sinGeometria)} ${sinGeometria === 1 ? "fila venía" : "filas venían"} sin geometría y no se ${sinGeometria === 1 ? "dibuja" : "dibujan"}.`
+                  : ""),
             mal: false,
           },
         ]);
@@ -791,10 +791,24 @@ export default function App() {
    * Con una zona elegida en Mirar, el mapa enseña esa zona y lo que cae
    * dentro. La mesa no se toca: al volver al ámbito urbano reaparece todo.
    */
-  const capasDibujadas = useMemo(() => {
-    if (modo !== "mirar" || !ambito) return capas;
-    const recorte = recorteDe(ambito, capasMirar);
-    return capas.map((c) => {
+  const dibujo = useMemo(() => {
+    if (modo !== "mirar" || !ambito) return { capas, enZona: [] };
+    const recorte = recorteDe(ambito, capas, capasMirar);
+    /*
+     * Cuánto queda de cada capa en la zona.
+     *
+     * Se enseña porque el recorte, sin un número, es un acto de fe: uno ve
+     * menos calles y no sabe si es que hay menos o si se perdieron por el
+     * camino. Con «569 de 9.553» se sabe qué se está mirando.
+     */
+    const enZona = capas
+      .filter((c) => c.visible && c.id !== capasMirar.plataformas?.id)
+      .map((c) => ({
+        nombre: c.nombre,
+        dentro: recorte.get(c.id)?.features.length ?? c.geo.features.length,
+        total: c.geo.features.length,
+      }));
+    const dibujadas = capas.map((c) => {
       const geo = recorte.get(c.id);
       const base = geo ? { ...c, geo } : c;
       /*
@@ -811,6 +825,7 @@ export default function App() {
       if (c.id !== capasMirar.equipamientos?.id) return base;
       return { ...base, tema: temaDeTipos(), anillo: true };
     });
+    return { capas: dibujadas, enZona };
   }, [modo, ambito, capas, capasMirar]);
 
   /** Trae de una vez las capas que el modo Mirar necesita. */
@@ -1050,6 +1065,7 @@ export default function App() {
                   listo={mirarListo}
                   cargando={cargando}
                   onTraerCapas={() => void traerTerritorio()}
+                  enZona={dibujo.enZona}
                   ambitos={ambitos}
                   elegido={ambito?.clave ?? "urbano"}
                   onElegir={elegirAmbito}
@@ -1150,7 +1166,7 @@ export default function App() {
 
           <main className="min-w-0 flex-1">
             <Mapa
-              capas={capasDibujadas}
+              capas={dibujo.capas}
               referencia={referencia}
               puntos={puntos}
               ambito={ultimo?.ambito ?? null}
