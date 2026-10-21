@@ -150,7 +150,9 @@ export default function App() {
   const [errorBase, setErrorBase] = useState<string | null>(null);
 
   // Modo Mirar
-  const [ambitoElegido, setAmbitoElegido] = useState("urbano");
+  // Se empieza por todo el cantón, que es el primer escalón del filtro.
+  // «urbano» sigue siendo válido: las mesas guardadas antes lo traen.
+  const [ambitoElegido, setAmbitoElegido] = useState("canton");
   const [fuentePoblacion, setFuentePoblacion] = useState<string | null>(null);
   const [poblacion, setPoblacion] =
     useState<Awaited<ReturnType<typeof cargarPoblacion>>>(null);

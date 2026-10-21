@@ -45,7 +45,17 @@ export interface Ambito {
   clave: string;
   titulo: string;
   /** De qué capa salió, para saber a qué nivel está. */
-  nivel: "urbano" | "parroquia" | "plataforma" | "barrio";
+  /**
+   * A qué altura de la división está.
+   *
+   * De lo macro a lo pequeño: el cantón entero, su mitad urbana o rural, una
+   * parroquia, una plataforma, un barrio. Las plataformas y los barrios solo
+   * existen en el casco, así que por la rama rural la escalera se acaba en la
+   * parroquia; el panel lo dice en vez de ofrecer listas vacías.
+   */
+  nivel: "canton" | "urbano" | "rural" | "parroquia" | "plataforma" | "barrio";
+  /** Para una parroquia, de qué lado del cantón es. */
+  tipo?: "urbana" | "rural";
   piezas: Anillo[][];
   caja: Caja;
   pob: number | null;
@@ -122,14 +132,21 @@ export function ambitosDe(
    * abajo— sería inventarse un reparto.
    */
   if (parroquias) {
+    const urbanas: Anillo[][] = [];
+    const rurales: Anillo[][] = [];
     parroquias.geo.features.forEach((f, i) => {
       const piezas = piezasDeRasgo(f);
       if (piezas.length === 0) return;
       const nombre = texto(f.properties?.nombre) || `Parroquia ${i + 1}`;
+      // La capa publicada trae el tipo; sin él se asume rural, que es lo que
+      // más hay, y el panel lo enseñará donde toca aunque no sea exacto.
+      const tipo = texto(f.properties?.tipo) === "urbana" ? "urbana" : "rural";
+      (tipo === "urbana" ? urbanas : rurales).push(...piezas);
       salida.push({
         clave: `parroquia:${texto(f.properties?.clave) || i}`,
         titulo: nombre,
         nivel: "parroquia",
+        tipo,
         piezas,
         caja: cajaDe(piezas.flat()),
         pob: null,
@@ -137,10 +154,64 @@ export function ambitosDe(
         ha: haDe(piezas),
       });
     });
+
+    /*
+     * El cantón entero y su mitad rural.
+     *
+     * Son el primer escalón del filtro: antes de preguntar por una parroquia
+     * hay que decir si se mira el casco o el campo, que es lo que separa de
+     * verdad este territorio. La mitad urbana se arma abajo, con las
+     * plataformas, porque ahí es donde está su población.
+     */
+    const todas = [...urbanas, ...rurales];
+    if (todas.length > 0) {
+      salida.push({
+        clave: "canton",
+        titulo: "Todo el cantón",
+        nivel: "canton",
+        piezas: todas,
+        caja: cajaDe(todas.flat()),
+        // El censo que se publica viene por plataforma y por barrio, es decir
+        // solo del casco: poner esa cifra aquí daría la población urbana por
+        // la del cantón.
+        pob: null,
+        viv: null,
+        ha: haDe(todas),
+      });
+    }
+    if (rurales.length > 0) {
+      salida.push({
+        clave: "rural",
+        titulo: "Rural",
+        nivel: "rural",
+        piezas: rurales,
+        caja: cajaDe(rurales.flat()),
+        pob: null,
+        viv: null,
+        ha: haDe(rurales),
+      });
+    }
   }
 
   if (plataformas) {
-    const todas = plataformas.geo.features.flatMap(piezasDeRasgo);
+    /*
+     * Lo urbano son las parroquias urbanas, no la suma de las plataformas.
+     *
+     * Las dieciocho plataformas no llenan el casco: suman 2.927 ha y las cinco
+     * parroquias urbanas, 3.095. Si «Urbano» fuera la unión de plataformas,
+     * elegirlo y bajar a una parroquia daría una zona MAYOR que la de arriba,
+     * y una escalera que se ensancha al bajar no es una escalera.
+     *
+     * La población sí sale del agregado por plataforma, que es el único censo
+     * publicado y cubre lo construido.
+     */
+    const urbanasDeParroquia = salida
+      .filter((a) => a.nivel === "parroquia" && a.tipo === "urbana")
+      .flatMap((a) => a.piezas);
+    const todas =
+      urbanasDeParroquia.length > 0
+        ? urbanasDeParroquia
+        : plataformas.geo.features.flatMap(piezasDeRasgo);
     if (todas.length > 0) {
       const pob = poblacion
         ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.pob, 0)
@@ -150,7 +221,7 @@ export function ambitosDe(
         : null;
       salida.push({
         clave: "urbano",
-        titulo: "Riobamba urbano · las 18 plataformas",
+        titulo: "Urbano",
         nivel: "urbano",
         piezas: todas,
         caja: cajaDe(todas.flat()),
@@ -320,14 +391,29 @@ export function leerAmbito(
    * Lizarzaburu y la cifra de al lado decía 107, y ninguno de los dos números
    * explicaba al otro.
    */
-  if (a.nivel !== "barrio") {
+  /*
+   * Los barrios de la zona.
+   *
+   * Todos son del casco, así que el cantón y lo urbano los tienen todos; una
+   * parroquia o una plataforma, los que cuelguen de ella. Por la rama rural
+   * no hay ninguno, y ahí la fila NO se pone: un «Barrios 0» junto a una
+   * parroquia de 27.900 ha se lee como que algo falló al contar, no como que
+   * los barrios son cosa del casco.
+   */
+  const puedeTenerBarrios =
+    a.nivel === "canton" ||
+    a.nivel === "urbano" ||
+    a.nivel === "plataforma" ||
+    (a.nivel === "parroquia" && a.tipo === "urbana");
+
+  if (puedeTenerBarrios) {
+    const todos = a.nivel === "canton" || a.nivel === "urbano";
     const cuantos = ambitos.filter(
       (x) =>
-        x.nivel === "barrio" && (x.padre === a.clave || x.abuelo === a.clave),
+        x.nivel === "barrio" &&
+        (todos || x.padre === a.clave || x.abuelo === a.clave),
     ).length;
-    if (cuantos > 0 || a.nivel !== "urbano") {
-      cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
-    }
+    cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
   }
 
   const tipos: Fila[] = [];
@@ -612,7 +698,7 @@ export function recorteDe(
 ): Map<string, GeoJSON.FeatureCollection> {
   const salida = new Map<string, GeoJSON.FeatureCollection>();
   const { plataformas, barrios } = capas;
-  const urbano = a.nivel === "urbano";
+  const todoElCanton = a.nivel === "canton";
 
   if (plataformas) {
     // Las plataformas no las dibuja la capa de datos en este modo: las pinta
@@ -622,7 +708,7 @@ export function recorteDe(
     salida.set(plataformas.id, VACIA);
   }
 
-  if (urbano) return salida;
+  if (todoElCanton) return salida;
 
   /*
    * Todas las demás capas se recortan, no solo las tres del municipio.

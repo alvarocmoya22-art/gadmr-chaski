@@ -54,8 +54,11 @@ export default function PanelMirar({
     );
   }
 
+  const canton = ambitos.find((a) => a.nivel === "canton");
   const urbano = ambitos.find((a) => a.nivel === "urbano");
-  const actual = ambitos.find((a) => a.clave === elegido) ?? urbano ?? null;
+  const rural = ambitos.find((a) => a.nivel === "rural");
+  const raiz = canton ?? urbano ?? null;
+  const actual = ambitos.find((a) => a.clave === elegido) ?? raiz;
 
   /*
    * Se baja en tres pasos, de lo macro a lo pequeño: parroquia, plataforma,
@@ -66,8 +69,6 @@ export default function PanelMirar({
    * acorta con la elección de arriba, y el rótulo dice cuántos quedan para
    * que se vea que se acortó a propósito y no que faltan.
    */
-  const parroquias = ambitos.filter((a) => a.nivel === "parroquia");
-
   const plataformaActiva =
     actual?.nivel === "plataforma" ? actual.clave : (actual?.padre ?? "");
 
@@ -76,6 +77,35 @@ export default function PanelMirar({
     actual?.nivel === "parroquia"
       ? actual.clave
       : (ambitos.find((a) => a.clave === plataformaActiva)?.padre ?? "");
+
+  /*
+   * El primer escalón: casco o campo.
+   *
+   * Es lo que separa de verdad este territorio, y hasta que no se dice, las
+   * dos listas de abajo ofrecen cosas que no van juntas. Se deduce de lo que
+   * haya elegido: una parroquia rural pone el filtro en rural sin que haya
+   * que tocarlo.
+   */
+  const laParroquia = ambitos.find((a) => a.clave === parroquiaActiva);
+  const lado: "" | "urbana" | "rural" =
+    actual?.nivel === "urbano"
+      ? "urbana"
+      : actual?.nivel === "rural"
+        ? "rural"
+        : (laParroquia?.tipo ?? "");
+
+  const parroquias = ambitos.filter(
+    (a) => a.nivel === "parroquia" && (lado === "" || a.tipo === lado),
+  );
+
+  /*
+   * Las plataformas y los barrios solo existen en el casco.
+   *
+   * Con una parroquia rural elegida, esas dos listas salían vacías y el
+   * rótulo decía «ninguna de Pungalá», que se lee como que algo falla. Se
+   * apagan y se dice por qué.
+   */
+  const hayCasco = lado !== "rural";
 
   const plataformas = ambitos.filter(
     (a) =>
@@ -116,22 +146,73 @@ export default function PanelMirar({
   const rotulo =
     "text-[11px] font-semibold uppercase tracking-wide text-[var(--gr-tinta-3)]";
   const campo =
-    "mt-1 w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-2 py-1.5 text-sm text-[var(--gr-tinta)]";
+    "mt-1 w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-2 py-1.5 text-sm text-[var(--gr-tinta)] disabled:opacity-45";
 
   return (
     <section className="space-y-3">
-      {parroquias.length > 0 && (
+      {/* El primer escalón: casco o campo. Todo lo demás cuelga de aquí. */}
+      {(urbano || rural) && (
         <div>
-          <span className={rotulo}>
-            Parroquia
-            {parroquias.length > 0 && ` · ${numero(parroquias.length)}`}
-          </span>
+          <span className={rotulo}>Qué mitad del cantón</span>
           <select
-            value={parroquiaActiva || urbano?.clave || ""}
+            value={
+              lado === "urbana"
+                ? (urbano?.clave ?? "")
+                : lado === "rural"
+                  ? (rural?.clave ?? "")
+                  : (raiz?.clave ?? "")
+            }
             onChange={(e) => onElegir(e.target.value)}
             className={campo}
           >
-            {urbano && <option value={urbano.clave}>{urbano.titulo}</option>}
+            {canton && (
+              <option value={canton.clave}>
+                {canton.titulo} · {sup(canton)}
+              </option>
+            )}
+            {urbano && (
+              <option value={urbano.clave}>
+                {urbano.titulo} · {sup(urbano)}
+              </option>
+            )}
+            {rural && (
+              <option value={rural.clave}>
+                {rural.titulo} · {sup(rural)}
+              </option>
+            )}
+          </select>
+        </div>
+      )}
+
+      {parroquias.length > 0 && (
+        <div>
+          <span className={rotulo}>
+            Parroquia · {numero(parroquias.length)}
+            {lado === "urbana"
+              ? " urbanas"
+              : lado === "rural"
+                ? " rurales"
+                : ""}
+          </span>
+          <select
+            value={parroquiaActiva}
+            onChange={(e) =>
+              onElegir(
+                e.target.value ||
+                  (lado === "urbana"
+                    ? (urbano?.clave ?? "")
+                    : lado === "rural"
+                      ? (rural?.clave ?? "")
+                      : (raiz?.clave ?? "")),
+              )
+            }
+            className={campo}
+          >
+            <option value="">
+              {lado === ""
+                ? "Todas las parroquias"
+                : `Todas las de ${lado === "urbana" ? "lo urbano" : "lo rural"}`}
+            </option>
             {parroquias.map((a) => (
               <option key={a.clave} value={a.clave}>
                 {a.titulo} · {sup(a)}
@@ -144,12 +225,15 @@ export default function PanelMirar({
       <div>
         <span className={rotulo}>
           Plataforma
-          {parroquiaActiva
-            ? ` · ${cuantas(plataformas.length)} de ${ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? ""}`
-            : ` · ${cuantas(plataformas.length)} del urbano`}
+          {!hayCasco
+            ? " · solo en el casco"
+            : parroquiaActiva
+              ? ` · ${cuantas(plataformas.length)} de ${ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? ""}`
+              : ` · ${cuantas(plataformas.length)} del urbano`}
         </span>
         <select
           // Al volver a «todas», se sube a la parroquia que las contiene.
+          disabled={!hayCasco}
           value={plataformaActiva}
           onChange={(e) =>
             onElegir(e.target.value || parroquiaActiva || urbano?.clave || "")
@@ -203,14 +287,20 @@ export default function PanelMirar({
       <div>
         <span className={rotulo}>
           Barrio
-          {` · ${cuantos(barrios.length)} de `}
-          {plataformaActiva
-            ? (ambitos.find((x) => x.clave === plataformaActiva)?.titulo ?? "")
-            : parroquiaActiva
-              ? (ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? "")
-              : "todo el urbano"}
+          {!hayCasco
+            ? " · solo en el casco"
+            : ` · ${cuantos(barrios.length)} de ${
+                plataformaActiva
+                  ? (ambitos.find((x) => x.clave === plataformaActiva)
+                      ?.titulo ?? "")
+                  : parroquiaActiva
+                    ? (ambitos.find((x) => x.clave === parroquiaActiva)
+                        ?.titulo ?? "")
+                    : "todo el urbano"
+              }`}
         </span>
         <select
+          disabled={!hayCasco}
           // Al volver a «todos», se sube al ámbito que contiene a estos barrios.
           value={actual?.nivel === "barrio" ? actual.clave : ""}
           onChange={(e) =>
