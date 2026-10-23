@@ -249,41 +249,6 @@ export default function PanelMirar({
         </select>
       </div>
 
-      {actual && actual.nivel !== "urbano" && (
-        <div className="rounded border border-[var(--gr-linea)] px-2 py-1.5">
-          {enZona.length > 0 && (
-            <table className="mb-1.5 w-full text-[11px]">
-              <caption className="mb-0.5 text-left text-[11px] font-semibold text-[var(--gr-tinta-2)]">
-                Lo que se dibuja aquí
-              </caption>
-              <tbody>
-                {enZona.map((c) => (
-                  <tr key={c.nombre}>
-                    <th className="py-0.5 pr-2 text-left font-normal text-[var(--gr-tinta-3)]">
-                      {c.nombre}
-                    </th>
-                    <td className="py-0.5 text-right text-[var(--gr-tinta-2)]">
-                      <span className="font-semibold text-[var(--gr-tinta)]">
-                        {numero(c.dentro)}
-                      </span>{" "}
-                      de {numero(c.total)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-            Se dibuja lo que toca esta zona, entero: una calle o un predio que
-            cruzan el límite no se parten, porque cortarlos les cambiaría la
-            longitud y la superficie. Por eso aquí puede salir algún área más
-            que en las cifras de abajo, que cuentan solo las que{" "}
-            <em>pertenecen</em> a la zona por su centro. Para cortar de verdad
-            está «¿Qué parte de esta capa cae dentro de aquella?», en Analizar.
-          </p>
-        </div>
-      )}
-
       <div>
         <span className={rotulo}>
           Barrio
@@ -322,6 +287,41 @@ export default function PanelMirar({
           ))}
         </select>
       </div>
+
+      {actual && actual.nivel !== "canton" && (
+        <div className="rounded border border-[var(--gr-linea)] px-2 py-1.5">
+          {enZona.length > 0 && (
+            <table className="mb-1.5 w-full text-[11px]">
+              <caption className="mb-0.5 text-left text-[11px] font-semibold text-[var(--gr-tinta-2)]">
+                Lo que se dibuja aquí
+              </caption>
+              <tbody>
+                {enZona.map((c) => (
+                  <tr key={c.nombre}>
+                    <th className="py-0.5 pr-2 text-left font-normal text-[var(--gr-tinta-3)]">
+                      {c.nombre}
+                    </th>
+                    <td className="py-0.5 text-right text-[var(--gr-tinta-2)]">
+                      <span className="font-semibold text-[var(--gr-tinta)]">
+                        {numero(c.dentro)}
+                      </span>{" "}
+                      de {numero(c.total)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            Se dibuja lo que toca esta zona, entero: una calle o un predio que
+            cruzan el límite no se parten, porque cortarlos les cambiaría la
+            longitud y la superficie. Por eso aquí puede salir algún área más
+            que en las cifras de abajo, que cuentan solo las que{" "}
+            <em>pertenecen</em> a la zona por su centro. Para cortar de verdad
+            está «¿Qué parte de esta capa cae dentro de aquella?», en Analizar.
+          </p>
+        </div>
+      )}
 
       {cifras.length > 0 && (
         <div className="rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2">
