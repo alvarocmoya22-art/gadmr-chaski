@@ -675,11 +675,7 @@ function cortaElBorde(g: GeoJSON.Geometry, a: Ambito): boolean {
   return false;
 }
 
-function perteneceA(
-  a: Ambito,
-  f: GeoJSON.Feature,
-  sonda: [number, number] | null,
-): boolean {
+function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
   const g = f.geometry;
   if (!g || g.type === "GeometryCollection") return false;
 
@@ -744,28 +740,6 @@ function perteneceA(
    * contra la intersección de verdad sobre seis capas de la base, esta regla
    * da 2/2, 12/12, 4/4, 4/4, 30/30 y 201 de 202 manzanas.
    */
-  /*
-   * El rasgo envuelve la zona.
-   *
-   * Es el caso de las capas gruesas —el límite urbano, las parroquias, la
-   * clasificación—, que no tienen ni un vértice dentro de una plataforma y
-   * sin esto desaparecían al filtrar.
-   *
-   * Se exige que su caja CONTENGA la de la zona. Sin esa condición bastaba
-   * con que la sonda —un punto de la zona, que cuando el centro cae fuera es
-   * uno de su borde— cayera dentro del rasgo, y un barrio pegado al límite
-   * de la cabecera de Licán entraba por ahí sin compartir superficie.
-   */
-  const envuelve = oeste <= o && este >= e && sur <= s && norte >= n;
-  if (
-    sonda &&
-    esArea &&
-    envuelve &&
-    poligonosDe(g).some((piezas) => enPoligono(sonda[0], sonda[1], piezas))
-  ) {
-    return true;
-  }
-
   if (!esArea) return cortaElBorde(g, a);
 
   /*
@@ -810,19 +784,18 @@ function perteneceA(
    * eso es Licán apareciendo al lado de una plataforma del centro sin que nada
    * lo explique.
    *
-   * Vale con que sea el 1 % del rasgo —un barrio vecino que de verdad entra— o
-   * el 1 % de la zona —un área grande que la cubre—. Lo que no pasa ninguna de
-   * las dos es lo que solo se asoma.
+   * Vale con que al menos el 1 % del RASGO esté dentro. Y solo eso: que la
+   * zona quepa entera dentro del rasgo no basta, porque entonces una
+   * parroquia de 5.186 ha se dibujaba por contener una cabecera de 41, y al
+   * mirar lo urbano aparecía el campo que lo rodea. Lo que envuelve la zona
+   * no está en la zona; dónde estás ya lo dicen los desplegables de arriba.
    */
   const suya = poligonosDe(g).reduce(
     (s, piezas) =>
       s + areaM2({ type: "Polygon", coordinates: piezas as number[][][] }),
     0,
   );
-  const deLaZona = a.ha * 10000;
-  return (
-    compartido >= PARTE_MINIMA * suya || compartido >= PARTE_MINIMA * deLaZona
-  );
+  return compartido >= PARTE_MINIMA * suya;
 }
 
 /** Qué parte hay que compartir para contar como «dentro»: el uno por ciento. */
@@ -841,32 +814,6 @@ const comoArea = (a: Ambito): GeoJSON.Geometry => ({
   type: "MultiPolygon",
   coordinates: a.piezas as number[][][][],
 });
-
-/**
- * Un punto de dentro de la zona, para probar si un área la contiene.
- *
- * Se prefiere el centro de su pieza mayor; en una zona con forma de ele ese
- * centro puede caer fuera, y entonces sirve un vértice de su contorno, que
- * está en el borde pero sigue siendo de la zona.
- */
-function sondaDe(a: Ambito): [number, number] | null {
-  const mayor = a.piezas.reduce(
-    (mejor, p) => (p[0].length > (mejor?.[0].length ?? 0) ? p : mejor),
-    a.piezas[0],
-  );
-  const anillo = mayor?.[0];
-  if (!anillo?.length) return null;
-  const n = anillo.length - 1;
-  if (n <= 0) return null;
-  let x = 0;
-  let y = 0;
-  for (let i = 0; i < n; i++) {
-    x += anillo[i][0];
-    y += anillo[i][1];
-  }
-  if (dentro(a, x / n, y / n)) return [x / n, y / n];
-  return [anillo[0][0], anillo[0][1]];
-}
 
 /**
  * Lo que el mapa debe dibujar de cada capa cuando hay una zona elegida.
@@ -913,7 +860,6 @@ export function recorteDe(
    */
   const elBarrio =
     a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
-  const sonda = sondaDe(a);
 
   for (const capa of todas) {
     if (capa.id === plataformas?.id) continue;
@@ -928,7 +874,7 @@ export function recorteDe(
     }
     salida.set(
       capa.id,
-      soloCon(capa, (f) => perteneceA(a, f, sonda)),
+      soloCon(capa, (f) => perteneceA(a, f)),
     );
   }
 
