@@ -76,7 +76,9 @@ export default function PanelMirar({
   const parroquiaActiva =
     actual?.nivel === "parroquia"
       ? actual.clave
-      : (ambitos.find((a) => a.clave === plataformaActiva)?.padre ?? "");
+      : actual?.nivel === "cabecera"
+        ? (actual.padre ?? "")
+        : (ambitos.find((a) => a.clave === plataformaActiva)?.padre ?? "");
 
   /*
    * El primer escalón: casco o campo.
@@ -99,13 +101,22 @@ export default function PanelMirar({
   );
 
   /*
-   * Las plataformas y los barrios solo existen en el casco.
+   * El tercer escalón cambia de nombre según la rama.
    *
-   * Con una parroquia rural elegida, esas dos listas salían vacías y el
-   * rótulo decía «ninguna de Pungalá», que se lee como que algo falla. Se
-   * apagan y se dice por qué.
+   * En lo urbano son las plataformas; en lo rural, la cabecera urbana de la
+   * parroquia, que es lo urbano que hay dentro y donde vive su gente. Los
+   * barrios solo existen en el casco, y por la rama rural ese cuarto escalón
+   * se apaga diciéndolo.
    */
   const hayCasco = lado !== "rural";
+
+  const cabeceras = ambitos.filter(
+    (a) =>
+      a.nivel === "cabecera" &&
+      (parroquiaActiva === "" || a.padre === parroquiaActiva),
+  );
+
+  const cabeceraActiva = actual?.nivel === "cabecera" ? actual.clave : "";
 
   const plataformas = ambitos.filter(
     (a) =>
@@ -222,26 +233,38 @@ export default function PanelMirar({
         </div>
       )}
 
+      {/*
+        El tercer escalón: plataforma en lo urbano, cabecera en lo rural.
+        Es el mismo sitio en la escalera —lo urbano de dentro—, así que es el
+        mismo desplegable y solo cambia de qué habla.
+      */}
       <div>
         <span className={rotulo}>
-          Plataforma
-          {!hayCasco
-            ? " · solo en el casco"
-            : parroquiaActiva
+          {hayCasco ? "Plataforma" : "Parte urbana"}
+          {hayCasco
+            ? parroquiaActiva
               ? ` · ${cuantas(plataformas.length)} de ${ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? ""}`
-              : ` · ${cuantas(plataformas.length)} del urbano`}
+              : ` · ${cuantas(plataformas.length)} del urbano`
+            : parroquiaActiva
+              ? ` · ${cuantas(cabeceras.length)} en ${ambitos.find((x) => x.clave === parroquiaActiva)?.titulo ?? ""}`
+              : ` · ${cabeceras.length === 0 ? "ninguna" : `${numero(cabeceras.length)} cabeceras`} parroquiales`}
         </span>
         <select
-          // Al volver a «todas», se sube a la parroquia que las contiene.
-          disabled={!hayCasco}
-          value={plataformaActiva}
+          // Al volver a «todas», se sube a la zona que las contiene.
+          value={hayCasco ? plataformaActiva : cabeceraActiva}
           onChange={(e) =>
-            onElegir(e.target.value || parroquiaActiva || urbano?.clave || "")
+            onElegir(
+              e.target.value ||
+                parroquiaActiva ||
+                (hayCasco ? (urbano?.clave ?? "") : (rural?.clave ?? "")),
+            )
           }
           className={campo}
         >
-          <option value="">Todas las plataformas</option>
-          {plataformas.map((a) => (
+          <option value="">
+            {hayCasco ? "Todas las plataformas" : "Toda la parroquia"}
+          </option>
+          {(hayCasco ? plataformas : cabeceras).map((a) => (
             <option key={a.clave} value={a.clave}>
               {a.titulo} · {sup(a)}
             </option>

@@ -53,7 +53,23 @@ export interface Ambito {
    * existen en el casco, así que por la rama rural la escalera se acaba en la
    * parroquia; el panel lo dice en vez de ofrecer listas vacías.
    */
-  nivel: "canton" | "urbano" | "rural" | "parroquia" | "plataforma" | "barrio";
+  /**
+   * A qué altura de la división está.
+   *
+   * De lo macro a lo pequeño. En la rama urbana: cantón, urbano, parroquia
+   * urbana, plataforma, barrio. En la rural: cantón, rural, parroquia rural y
+   * su CABECERA, que es lo urbano que hay dentro y ocupa el mismo escalón que
+   * la plataforma. Antes la rama rural se acababa en la parroquia y la parte
+   * donde vive la gente no se podía mirar sola.
+   */
+  nivel:
+    | "canton"
+    | "urbano"
+    | "rural"
+    | "parroquia"
+    | "plataforma"
+    | "cabecera"
+    | "barrio";
   /** Para una parroquia, de qué lado del cantón es. */
   tipo?: "urbana" | "rural";
   piezas: Anillo[][];
@@ -114,6 +130,7 @@ const haDe = (piezas: Anillo[][]): number =>
  */
 export function ambitosDe(
   parroquias: Capa | null,
+  limiteUrbano: Capa | null,
   plataformas: Capa | null,
   barrios: Capa | null,
   poblacion: Poblacion | null,
@@ -191,6 +208,38 @@ export function ambitosDe(
         ha: haDe(rurales),
       });
     }
+  }
+
+  /*
+   * Las cabeceras urbanas de las parroquias rurales.
+   *
+   * Van después de las parroquias porque cuelgan de ellas, y antes que las
+   * plataformas porque ocupan su mismo escalón: lo urbano de dentro. La
+   * pieza de la ciudad —«ciudad» en la capa— no entra aquí: esa es el casco
+   * entero y ya la representan las plataformas.
+   */
+  if (limiteUrbano) {
+    const parroquiasDe = salida.filter((a) => a.nivel === "parroquia");
+    limiteUrbano.geo.features.forEach((f, i) => {
+      if (texto(f.properties?.clase) !== "cabecera") return;
+      const piezas = piezasDeRasgo(f);
+      if (piezas.length === 0) return;
+      const donde = texto(f.properties?.parroquia);
+      const padre = padreDe(f, parroquiasDe);
+      salida.push({
+        clave: `cabecera:${i}`,
+        // Hay parroquias con más de un núcleo —San Luis tiene tres—, así que
+        // el nombre solo no distingue: se añade su superficie al elegirlas.
+        titulo: donde ? `Cabecera de ${donde}` : `Cabecera ${i + 1}`,
+        nivel: "cabecera",
+        piezas,
+        caja: cajaDe(piezas.flat()),
+        pob: null,
+        viv: null,
+        ha: haDe(piezas),
+        padre,
+      });
+    });
   }
 
   if (plataformas) {
@@ -322,10 +371,6 @@ function padreDe(f: GeoJSON.Feature, candidatos: Ambito[]): string | undefined {
    * métrico local, así que no hace falta nada nuevo.
    */
   const caja = cajaDe(piezasDeRasgo(f).flat());
-  const comoArea = (a: Ambito): GeoJSON.Geometry => ({
-    type: "MultiPolygon",
-    coordinates: a.piezas as number[][][][],
-  });
   const plano = planoDe([g, ...candidatos.map(comoArea)]);
   const mio = aMulti(g);
 
@@ -347,6 +392,21 @@ function padreDe(f: GeoJSON.Feature, candidatos: Ambito[]): string | undefined {
     }
   }
   return mejor;
+}
+
+/** El centro de un área: la media de los vértices de su anillo mayor. */
+function centroDeRasgo(f: GeoJSON.Feature): [number, number] | null {
+  const anillo = piezasDeRasgo(f)[0]?.[0];
+  if (!anillo?.length) return null;
+  const n = anillo.length - 1;
+  if (n <= 0) return null;
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < n; i++) {
+    x += anillo[i][0];
+    y += anillo[i][1];
+  }
+  return [x / n, y / n];
 }
 
 /** Cierto si el punto cae en el ámbito. */
@@ -452,6 +512,8 @@ export function leerAmbito(
 /** Las tres capas de Mirar, cada una con la que toca. */
 export interface CapasMirar {
   parroquias: Capa | null;
+  /** El límite urbano: la ciudad y las trece cabeceras parroquiales. */
+  limiteUrbano: Capa | null;
   plataformas: Capa | null;
   barrios: Capa | null;
   equipamientos: Capa | null;
@@ -623,8 +685,18 @@ function perteneceA(
   const [o, s, e, n] = a.caja;
   if (este < o || oeste > e || norte < s || sur > n) return false;
 
-  // Puntos y líneas: con que algo suyo caiga dentro, basta.
-  if (vertices.some(([x, y]) => dentro(a, x, y))) return true;
+  const esArea = g.type === "Polygon" || g.type === "MultiPolygon";
+
+  /*
+   * Puntos y líneas: con que algo suyo caiga dentro, basta.
+   *
+   * Para las ÁREAS no vale ese atajo. Un punto que cae justo en el límite
+   * cuenta como dentro, y dos dibujos del mismo límite comparten vértices,
+   * así que al elegir la cabecera de Licán entraban seis barrios del casco
+   * —cuatro de ellos compartiendo 0,00 ha, solo la raya—. Un área se mide,
+   * no se roza.
+   */
+  if (!esArea && vertices.some(([x, y]) => dentro(a, x, y))) return true;
 
   /*
    * Y un área puede contener la zona sin tener ni un vértice dentro.
@@ -640,16 +712,78 @@ function perteneceA(
    * contra la intersección de verdad sobre seis capas de la base, esta regla
    * da 2/2, 12/12, 4/4, 4/4, 30/30 y 201 de 202 manzanas.
    */
+  /*
+   * El rasgo envuelve la zona.
+   *
+   * Es el caso de las capas gruesas —el límite urbano, las parroquias, la
+   * clasificación—, que no tienen ni un vértice dentro de una plataforma y
+   * sin esto desaparecían al filtrar.
+   *
+   * Se exige que su caja CONTENGA la de la zona. Sin esa condición bastaba
+   * con que la sonda —un punto de la zona, que cuando el centro cae fuera es
+   * uno de su borde— cayera dentro del rasgo, y un barrio pegado al límite
+   * de la cabecera de Licán entraba por ahí sin compartir superficie.
+   */
+  const envuelve = oeste <= o && este >= e && sur <= s && norte >= n;
   if (
     sonda &&
-    (g.type === "Polygon" || g.type === "MultiPolygon") &&
+    esArea &&
+    envuelve &&
     poligonosDe(g).some((piezas) => enPoligono(sonda[0], sonda[1], piezas))
   ) {
     return true;
   }
 
-  return cortaElBorde(g, a);
+  if (!esArea) return cortaElBorde(g, a);
+
+  /*
+   * El área se queda si su CENTRO está dentro, y si no, si comparte
+   * superficie de verdad.
+   *
+   * Lo del centro es el camino rápido y cubre la inmensa mayoría: con el
+   * catastro dentro de una plataforma son decenas de miles de predios, y
+   * cortar polígonos uno a uno para saber lo que el centro ya dice sería
+   * pagar segundos por nada. Lo caro se reserva para los del borde, que son
+   * pocos y los únicos dudosos.
+   */
+  const c = centroDeRasgo(f);
+  if (c && dentro(a, c[0], c[1])) return true;
+
+  /*
+   * Y si solo se cruzan los contornos, hay que mirar CUÁNTO comparten.
+   *
+   * Dos dibujos del mismo límite nunca coinciden al milímetro, así que dos
+   * áreas que apenas se tocan por el borde producen cruces de verdad. Con
+   * eso bastaba para dibujarlas enteras: al elegir la cabecera de Licán
+   * salían seis barrios del casco, y cuatro de ellos compartían 0,00 ha —solo
+   * la línea—. Un barrio entero traído por rozar una raya es ruido.
+   *
+   * Se exige un solape de verdad. La cuenta solo se hace aquí, que es el caso
+   * dudoso y el raro: lo que tiene un vértice dentro ya salió por arriba.
+   */
+  const plano = planoDe([g, comoArea(a)]);
+  const trozos = intersecar(aMulti(g), aMulti(comoArea(a)), plano) ?? [];
+  const compartido = trozos.reduce(
+    (s, poly) =>
+      s + areaM2({ type: "Polygon", coordinates: poly as number[][][] }),
+    0,
+  );
+  return compartido > SOLAPE_MINIMO_M2;
 }
+
+/**
+ * Cuánto hay que compartir para contar como «dentro».
+ *
+ * Cien metros cuadrados: por debajo de eso no es territorio compartido, es el
+ * desajuste entre dos dibujos del mismo límite.
+ */
+const SOLAPE_MINIMO_M2 = 100;
+
+/** Un ámbito como geometría, para las operaciones entre polígonos. */
+const comoArea = (a: Ambito): GeoJSON.Geometry => ({
+  type: "MultiPolygon",
+  coordinates: a.piezas as number[][][][],
+});
 
 /**
  * Un punto de dentro de la zona, para probar si un área la contiene.
@@ -849,6 +983,7 @@ export const CAPAS_MIRAR = [
    * filtro todo lo que no sea casco.
    */
   { archivo: "parroquias_canton.geojson", nombre: "Parroquias" },
+  { archivo: "limite_urbano.geojson", nombre: "Límite urbano" },
   { archivo: "plataformas.geojson", nombre: "Plataformas" },
   { archivo: "barrios.geojson", nombre: "Barrios" },
   { archivo: "equipamientos.geojson", nombre: "Equipamientos" },

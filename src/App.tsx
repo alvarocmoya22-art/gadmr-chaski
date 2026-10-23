@@ -810,6 +810,7 @@ export default function App() {
   const capasMirar = useMemo(
     () => ({
       parroquias: porNombre("Parroquias"),
+      limiteUrbano: porNombre("Límite urbano"),
       plataformas: porNombre("Plataformas"),
       barrios: porNombre("Barrios"),
       equipamientos: porNombre("Equipamientos"),
@@ -831,12 +832,14 @@ export default function App() {
     () =>
       ambitosDe(
         capasMirar.parroquias,
+        capasMirar.limiteUrbano,
         capasMirar.plataformas,
         capasMirar.barrios,
         poblacion,
       ),
     [
       capasMirar.parroquias,
+      capasMirar.limiteUrbano,
       capasMirar.plataformas,
       capasMirar.barrios,
       poblacion,

@@ -401,18 +401,29 @@ export default function Mapa({
       const leer = (v: string) => css.getPropertyValue(v).trim();
       const azul = leer("--gr-azul-500") || "#0f4c81";
       const tenue = leer("--gr-tinta-3") || "#66757f";
-      // Sin plataforma elegida -que es el ambito urbano- no hay ninguna que
-      // destacar: el filtro de la elegida no debe casar con nada y el de las
-      // demas con todas. `['==', 1, 0]` es un «nunca» que MapLibre entiende.
+      /*
+       * Sin plataforma elegida no hay ninguna que destacar.
+       *
+       * Antes eso se resolvía con un filtro «que no case con nada»,
+       * `['==', 1, 0]`. MapLibre lo lee como filtro de los antiguos, donde el
+       * primer operando tiene que ser el nombre de un campo, y lanzaba
+       * «string expected, number found» AL AÑADIR LA CAPA. El error salía en
+       * la consola y el mapa se quedaba a medio montar sin decir nada.
+       *
+       * Ahora, sin elegida, la capa del relleno no se añade y la de las demás
+       * va sin filtro: no hace falta inventarse condiciones imposibles.
+       */
       const clave = referencia.activa
         ? referencia.activa.replace("plataforma:", "")
         : null;
-      const esta = (
-        clave === null ? ["==", 1, 0] : ["==", ["get", "clave"], clave]
-      ) as maplibregl.FilterSpecification;
-      const otras = (
-        clave === null ? ["==", 1, 1] : ["!=", ["get", "clave"], clave]
-      ) as maplibregl.FilterSpecification;
+      const esta =
+        clave === null
+          ? null
+          : (["==", ["get", "clave"], clave] as maplibregl.FilterSpecification);
+      const otras =
+        clave === null
+          ? null
+          : (["!=", ["get", "clave"], clave] as maplibregl.FilterSpecification);
 
       m.addSource("mirar-plataformas", {
         type: "geojson",

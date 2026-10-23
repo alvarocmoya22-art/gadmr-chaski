@@ -53,6 +53,12 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
     peso: "124 KB",
   },
   {
+    archivo: "limite_urbano.geojson",
+    nombre: "Límite urbano",
+    nota: "La ciudad y las 13 cabeceras de las parroquias rurales",
+    peso: "28 KB",
+  },
+  {
     archivo: "parroquias_canton.geojson",
     nombre: "Parroquias",
     nota: "17: las 5 urbanas, las 11 rurales y el área rural de Riobamba",
