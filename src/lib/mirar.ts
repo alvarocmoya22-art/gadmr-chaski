@@ -768,8 +768,33 @@ function perteneceA(
       s + areaM2({ type: "Polygon", coordinates: poly as number[][][] }),
     0,
   );
-  return compartido > SOLAPE_MINIMO_M2;
+  if (compartido <= SOLAPE_MINIMO_M2) return false;
+
+  /*
+   * Y además tiene que ser un pedazo de algo, no una esquina.
+   *
+   * Con el mínimo absoluto solo, una parroquia de 2.100 ha se dibujaba entera
+   * porque la plataforma D le pisaba 1.116 m²: el 0,005 % de ella. En pantalla
+   * eso es Licán apareciendo al lado de una plataforma del centro sin que nada
+   * lo explique.
+   *
+   * Vale con que sea el 1 % del rasgo —un barrio vecino que de verdad entra— o
+   * el 1 % de la zona —un área grande que la cubre—. Lo que no pasa ninguna de
+   * las dos es lo que solo se asoma.
+   */
+  const suya = poligonosDe(g).reduce(
+    (s, piezas) =>
+      s + areaM2({ type: "Polygon", coordinates: piezas as number[][][] }),
+    0,
+  );
+  const deLaZona = a.ha * 10000;
+  return (
+    compartido >= PARTE_MINIMA * suya || compartido >= PARTE_MINIMA * deLaZona
+  );
 }
+
+/** Qué parte hay que compartir para contar como «dentro»: el uno por ciento. */
+const PARTE_MINIMA = 0.01;
 
 /**
  * Cuánto hay que compartir para contar como «dentro».
