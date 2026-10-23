@@ -94,11 +94,33 @@ export default function PanelMirar({
       ? "urbana"
       : actual?.nivel === "rural"
         ? "rural"
-        : (laParroquia?.tipo ?? "");
+        : // Una cabecera es suelo urbano aunque su parroquia sea rural: si se
+          // mirara el tipo de la parroquia, entrar por lo urbano a la cabecera
+          // de Licán devolvía el filtro a «Rural» en el mismo clic.
+          actual?.nivel === "cabecera"
+          ? "urbana"
+          : (laParroquia?.tipo ?? "");
 
-  const parroquias = ambitos.filter(
-    (a) => a.nivel === "parroquia" && (lado === "" || a.tipo === lado),
+  /*
+   * Qué parroquias salen en cada rama.
+   *
+   * En lo urbano, las que TIENEN suelo urbano: las cinco urbanas y las once
+   * rurales con cabecera. Filtrando solo por el tipo de la parroquia, elegir
+   * «Urbano» dejaba fuera Licán, San Luis y las demás, y sus cabeceras —461
+   * ha de suelo urbano— no se podían alcanzar por la rama que les toca.
+   *
+   * En lo rural, las que tienen suelo rural, que son todas menos las urbanas.
+   */
+  const conCabecera = new Set(
+    ambitos.filter((a) => a.nivel === "cabecera").map((a) => a.padre ?? ""),
   );
+  const parroquias = ambitos.filter((a) => {
+    if (a.nivel !== "parroquia") return false;
+    if (lado === "urbana")
+      return a.tipo === "urbana" || conCabecera.has(a.clave);
+    if (lado === "rural") return a.tipo === "rural";
+    return true;
+  });
 
   /*
    * El tercer escalón cambia de nombre según la rama.
@@ -108,7 +130,19 @@ export default function PanelMirar({
    * barrios solo existen en el casco, y por la rama rural ese cuarto escalón
    * se apaga diciéndolo.
    */
-  const hayCasco = lado !== "rural";
+  /*
+   * El tercer escalón habla de plataformas o de cabeceras según la PARROQUIA,
+   * no según la rama.
+   *
+   * Desde «Urbano» se puede bajar a Licán, y ahí lo urbano no son plataformas
+   * —no tiene— sino su cabecera.
+   */
+  const hayCasco =
+    laParroquia?.tipo === "urbana"
+      ? true
+      : laParroquia?.tipo === "rural"
+        ? false
+        : lado !== "rural";
 
   const cabeceras = ambitos.filter(
     (a) =>
@@ -200,13 +234,15 @@ export default function PanelMirar({
           <span className={rotulo}>
             Parroquia · {numero(parroquias.length)}
             {lado === "urbana"
-              ? " urbanas"
+              ? " con suelo urbano"
               : lado === "rural"
                 ? " rurales"
                 : ""}
           </span>
           <select
-            value={parroquiaActiva}
+            value={
+              actual?.nivel === "cabecera" ? actual.clave : parroquiaActiva
+            }
             onChange={(e) =>
               onElegir(
                 e.target.value ||
@@ -224,11 +260,27 @@ export default function PanelMirar({
                 ? "Todas las parroquias"
                 : `Todas las de ${lado === "urbana" ? "lo urbano" : "lo rural"}`}
             </option>
-            {parroquias.map((a) => (
-              <option key={a.clave} value={a.clave}>
-                {a.titulo} · {sup(a)}
-              </option>
-            ))}
+            {parroquias.map((a) => {
+              /*
+               * Por la rama urbana, una parroquia rural lleva a su cabecera.
+               *
+               * Es lo que se está pidiendo: dentro de lo urbano, de Licán
+               * interesa su parte urbana —98 ha—, no las 2.091 de la
+               * parroquia entera, que son campo.
+               */
+              const suCabecera =
+                lado === "urbana" && a.tipo === "rural"
+                  ? ambitos.find(
+                      (x) => x.nivel === "cabecera" && x.padre === a.clave,
+                    )
+                  : null;
+              const destino = suCabecera ?? a;
+              return (
+                <option key={a.clave} value={destino.clave}>
+                  {a.titulo} · {sup(destino)}
+                </option>
+              );
+            })}
           </select>
         </div>
       )}

@@ -811,6 +811,7 @@ export default function App() {
     () => ({
       parroquias: porNombre("Parroquias"),
       limiteUrbano: porNombre("Límite urbano"),
+      clasificacion: porNombre("Clasificación del suelo"),
       plataformas: porNombre("Plataformas"),
       barrios: porNombre("Barrios"),
       equipamientos: porNombre("Equipamientos"),
@@ -833,6 +834,7 @@ export default function App() {
       ambitosDe(
         capasMirar.parroquias,
         capasMirar.limiteUrbano,
+        capasMirar.clasificacion,
         capasMirar.plataformas,
         capasMirar.barrios,
         poblacion,
@@ -840,6 +842,7 @@ export default function App() {
     [
       capasMirar.parroquias,
       capasMirar.limiteUrbano,
+      capasMirar.clasificacion,
       capasMirar.plataformas,
       capasMirar.barrios,
       poblacion,

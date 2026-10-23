@@ -53,6 +53,12 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
     peso: "124 KB",
   },
   {
+    archivo: "clasificacion_suelo.geojson",
+    nombre: "Clasificación del suelo",
+    nota: "Lo urbano y lo rural del cantón, el reparto oficial",
+    peso: "234 KB",
+  },
+  {
     archivo: "limite_urbano.geojson",
     nombre: "Límite urbano",
     nota: "La ciudad y las 13 cabeceras de las parroquias rurales",

@@ -131,6 +131,7 @@ const haDe = (piezas: Anillo[][]): number =>
 export function ambitosDe(
   parroquias: Capa | null,
   limiteUrbano: Capa | null,
+  clasificacion: Capa | null,
   plataformas: Capa | null,
   barrios: Capa | null,
   poblacion: Poblacion | null,
@@ -180,8 +181,16 @@ export function ambitosDe(
      * verdad este territorio. La mitad urbana se arma abajo, con las
      * plataformas, porque ahí es donde está su población.
      */
+    /*
+     * El cantón, solo si no hay clasificación.
+     *
+     * Con ella, el cantón se arma abajo sumando sus dos clases, y así las
+     * tres cifras del primer desplegable cuadran entre sí. Armándolo aquí
+     * salía de las parroquias y las otras dos de la clasificación: dos capas
+     * distintas, cinco hectáreas de diferencia y ninguna explicación.
+     */
     const todas = [...urbanas, ...rurales];
-    if (todas.length > 0) {
+    if (!clasificacion && todas.length > 0) {
       salida.push({
         clave: "canton",
         titulo: "Todo el cantón",
@@ -196,16 +205,73 @@ export function ambitosDe(
         ha: haDe(todas),
       });
     }
-    if (rurales.length > 0) {
+  }
+
+  /*
+   * Urbano y rural, del reparto oficial del suelo.
+   *
+   * NO de las parroquias. Lo urbano del cantón no es solo la ciudad: son
+   * 3.095 ha de casco más trece cabeceras de parroquias rurales que suman
+   * 461. Tomando «urbano» como las cinco parroquias urbanas, esos manchones
+   * —Licán 98 ha, los tres núcleos de San Luis, Cubijíes, Licto…— quedaban
+   * contados como campo, y son suelo urbano igual que el centro.
+   *
+   * Las dos clases reparten el cantón sin solaparse: 96.316 y 3.555 ha.
+   */
+  if (clasificacion) {
+    const porClase = (cual: string) =>
+      clasificacion.geo.features
+        .filter((f) => texto(f.properties?.clase).toLowerCase() === cual)
+        .flatMap(piezasDeRasgo);
+
+    const loUrbano = porClase("urbano");
+    const loRural = porClase("rural");
+
+    const todoElSuelo = [...loUrbano, ...loRural];
+    if (todoElSuelo.length > 0) {
+      salida.push({
+        clave: "canton",
+        titulo: "Todo el cantón",
+        nivel: "canton",
+        piezas: todoElSuelo,
+        caja: cajaDe(todoElSuelo.flat()),
+        // El censo publicado es por plataforma y por barrio, o sea solo del
+        // casco: ponerlo aquí daría la población urbana por la del cantón.
+        pob: null,
+        viv: null,
+        ha: haDe(todoElSuelo),
+      });
+    }
+
+    if (loUrbano.length > 0) {
+      salida.push({
+        clave: "urbano",
+        titulo: "Urbano",
+        nivel: "urbano",
+        piezas: loUrbano,
+        caja: cajaDe(loUrbano.flat()),
+        // El censo publicado viene por plataforma, que cubre el casco. Las
+        // cabeceras no traen el suyo, así que esta cifra es la del casco y
+        // se queda corta por lo que vive en ellas.
+        pob: poblacion
+          ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.pob, 0)
+          : null,
+        viv: poblacion
+          ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.viv, 0)
+          : null,
+        ha: haDe(loUrbano),
+      });
+    }
+    if (loRural.length > 0) {
       salida.push({
         clave: "rural",
         titulo: "Rural",
         nivel: "rural",
-        piezas: rurales,
-        caja: cajaDe(rurales.flat()),
+        piezas: loRural,
+        caja: cajaDe(loRural.flat()),
         pob: null,
         viv: null,
-        ha: haDe(rurales),
+        ha: haDe(loRural),
       });
     }
   }
@@ -243,42 +309,6 @@ export function ambitosDe(
   }
 
   if (plataformas) {
-    /*
-     * Lo urbano son las parroquias urbanas, no la suma de las plataformas.
-     *
-     * Las dieciocho plataformas no llenan el casco: suman 2.927 ha y las cinco
-     * parroquias urbanas, 3.095. Si «Urbano» fuera la unión de plataformas,
-     * elegirlo y bajar a una parroquia daría una zona MAYOR que la de arriba,
-     * y una escalera que se ensancha al bajar no es una escalera.
-     *
-     * La población sí sale del agregado por plataforma, que es el único censo
-     * publicado y cubre lo construido.
-     */
-    const urbanasDeParroquia = salida
-      .filter((a) => a.nivel === "parroquia" && a.tipo === "urbana")
-      .flatMap((a) => a.piezas);
-    const todas =
-      urbanasDeParroquia.length > 0
-        ? urbanasDeParroquia
-        : plataformas.geo.features.flatMap(piezasDeRasgo);
-    if (todas.length > 0) {
-      const pob = poblacion
-        ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.pob, 0)
-        : null;
-      const viv = poblacion
-        ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.viv, 0)
-        : null;
-      salida.push({
-        clave: "urbano",
-        titulo: "Urbano",
-        nivel: "urbano",
-        piezas: todas,
-        caja: cajaDe(todas.flat()),
-        pob,
-        viv,
-        ha: haDe(todas),
-      });
-    }
     plataformas.geo.features.forEach((f) => {
       const piezas = piezasDeRasgo(f);
       if (piezas.length === 0) return;
@@ -514,6 +544,8 @@ export interface CapasMirar {
   parroquias: Capa | null;
   /** El límite urbano: la ciudad y las trece cabeceras parroquiales. */
   limiteUrbano: Capa | null;
+  /** La clasificación del suelo: lo urbano y lo rural del cantón. */
+  clasificacion: Capa | null;
   plataformas: Capa | null;
   barrios: Capa | null;
   equipamientos: Capa | null;
@@ -1009,6 +1041,7 @@ export const CAPAS_MIRAR = [
    */
   { archivo: "parroquias_canton.geojson", nombre: "Parroquias" },
   { archivo: "limite_urbano.geojson", nombre: "Límite urbano" },
+  { archivo: "clasificacion_suelo.geojson", nombre: "Clasificación del suelo" },
   { archivo: "plataformas.geojson", nombre: "Plataformas" },
   { archivo: "barrios.geojson", nombre: "Barrios" },
   { archivo: "equipamientos.geojson", nombre: "Equipamientos" },
