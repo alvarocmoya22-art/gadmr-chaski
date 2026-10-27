@@ -435,6 +435,15 @@ export default function App() {
       marcas: marcasDe(ambitos).filter((m) =>
         quedan.has(m.clave.slice("plataforma:".length)),
       ),
+      // Lo que se haya elegido en la tarjeta, con los valores de siempre si
+      // no se ha tocado nada.
+      estilo: {
+        // Solo si el usuario lo eligio: sin eso, el telon pasaria del azul
+        // de «la elegida» al color que le tocara a la capa al cargarse.
+        color: capa.trazo ? capa.color : "",
+        grosor: capa.trazo?.grosor ?? 1,
+        opacidad: capa.trazo?.opacidad ?? 0.16,
+      },
     };
   }, [modo, capasMirar.plataformas, ambito, ambitos]);
 
@@ -1205,7 +1214,29 @@ export default function App() {
               }
               onColor={(id, color) =>
                 setCapas((cs) =>
-                  cs.map((c) => (c.id === id ? { ...c, color } : c)),
+                  cs.map((c) =>
+                    c.id === id
+                      ? {
+                          ...c,
+                          color,
+                          /*
+                           * Tocar el color deja constancia en `trazo`.
+                           *
+                           * `trazo` es lo que distingue «esta capa la pinto
+                           * el usuario» de «esta capa lleva el color que le
+                           * toco al cargarla», y de eso depende que el telon
+                           * de Mirar obedezca. Sin esto, cambiar solo el
+                           * color no hacia nada ahi: lo que el usuario hace
+                           * tiene que notarse, y si no se nota es un fallo
+                           * aunque el dato este bien.
+                           */
+                          trazo: c.trazo ?? {
+                            grosor: 1,
+                            opacidad: c.tema ? 0.62 : 0.18,
+                          },
+                        }
+                      : c,
+                  ),
                 )
               }
               onTrazo={(id, trazo) =>

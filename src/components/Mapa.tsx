@@ -60,6 +60,15 @@ export interface Referencia {
   /** La clave de la elegida (`plataforma:C`), o null en el ámbito urbano. */
   activa: string | null;
   marcas: Marca[];
+  /**
+   * El estilo de la capa de plataformas, para que el telón lo obedezca.
+   *
+   * El telón se pinta aparte —es el único sitio donde se puede destacar la
+   * elegida— y por eso tenía sus propios colores fijos. Resultado: se le
+   * cambiaba el color a la capa en su tarjeta, se subía el grosor, y en este
+   * modo no pasaba nada. Un control que no hace nada es peor que no tenerlo.
+   */
+  estilo: { color: string; grosor: number; opacidad: number };
 }
 
 /** Lo que hace falta para montar una lámina: la imagen y su escala. */
@@ -466,8 +475,10 @@ export default function Mapa({
         source: "mirar-plataformas",
         ...(otras ? { filter: otras } : {}),
         paint: {
-          "line-color": tenue,
-          "line-width": 1,
+          // El color de la capa, apagado: las que NO están elegidas se
+          // dibujan para no perder la orientación, no para competir.
+          "line-color": referencia.estilo.color || tenue,
+          "line-width": 1 * referencia.estilo.grosor,
           "line-opacity": 0.55,
           "line-dasharray": [3, 2],
         },
@@ -478,7 +489,10 @@ export default function Mapa({
           type: "fill",
           source: "mirar-plataformas",
           filter: esta,
-          paint: { "fill-color": azul, "fill-opacity": 0.16 },
+          paint: {
+            "fill-color": referencia.estilo.color || azul,
+            "fill-opacity": referencia.estilo.opacidad,
+          },
         });
       }
     }
@@ -629,7 +643,11 @@ export default function Mapa({
         source: "mirar-plataformas",
         filter: soloEsta,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": claro, "line-width": 6, "line-opacity": 0.7 },
+        paint: {
+          "line-color": claro,
+          "line-width": 6 * referencia.estilo.grosor,
+          "line-opacity": 0.7,
+        },
       });
       m.addLayer({
         id: "mirar-plataformas-linea",
@@ -637,7 +655,11 @@ export default function Mapa({
         source: "mirar-plataformas",
         filter: soloEsta,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": azul, "line-width": 2.6, "line-opacity": 0.95 },
+        paint: {
+          "line-color": referencia.estilo.color || azul,
+          "line-width": 2.6 * referencia.estilo.grosor,
+          "line-opacity": 0.95,
+        },
       });
     }
   }, [capas, puntos, ambito, referencia, listo]);
