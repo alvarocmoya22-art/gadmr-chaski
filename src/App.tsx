@@ -1005,6 +1005,14 @@ export default function App() {
        * enseña, no un dato: la mesa guarda la capa, no su pintura.
        */
       if (c.id !== capasMirar.equipamientos?.id) return base;
+      /*
+       * El anillo por tipo es el valor POR OMISION, no una imposicion.
+       *
+       * Si el usuario le puso un estilo a la capa, manda el suyo: pisarlo
+       * significaba que elegir un color en la tarjeta no hacia nada en este
+       * modo y nada en pantalla explicaba por que.
+       */
+      if (c.tema) return { ...base, anillo: true };
       return { ...base, tema: temaDeTipos(), anillo: true };
     });
     return { capas: dibujadas, enZona };
@@ -1193,6 +1201,16 @@ export default function App() {
                   cs.map((c) =>
                     c.id === id ? { ...c, tema: tema ?? undefined } : c,
                   ),
+                )
+              }
+              onColor={(id, color) =>
+                setCapas((cs) =>
+                  cs.map((c) => (c.id === id ? { ...c, color } : c)),
+                )
+              }
+              onTrazo={(id, trazo) =>
+                setCapas((cs) =>
+                  cs.map((c) => (c.id === id ? { ...c, trazo } : c)),
                 )
               }
               base={

@@ -63,6 +63,19 @@ export interface Capa {
    */
   filtro?: Filtro;
   color: string;
+  /**
+   * Lo que el usuario toco del trazo: cuanto pesa y cuanto tapa.
+   *
+   * `grosor` es un MULTIPLICADOR y no una medida, para que valga igual en las
+   * tres formas: engorda el borde de un area, la linea de una via y el radio
+   * de un punto. Una medida en pixeles obligaria a un control por forma y a
+   * que una capa mixta tuviera dos.
+   *
+   * Sin esto, cada capa se pintaba con los numeros fijos del mapa: un
+   * catastro de cuarenta mil predios y una capa de tres zonas salian con el
+   * mismo borde de 1,1 pixeles, y en el primero eso es una mancha.
+   */
+  trazo?: { grosor: number; opacidad: number };
   visible: boolean;
   /** Cierto si la calculó una herramienta en vez de venir de un archivo. */
   derivada?: boolean;

@@ -104,8 +104,32 @@ function pintura(capa: Capa): unknown {
   return expr;
 }
 
-/** Cuánto se transparenta un relleno: el temático pesa, el plano acompaña. */
-const opacidad = (capa: Capa) => (capa.tema ? 0.62 : 0.18);
+/**
+ * Cuánto se transparenta un relleno: el temático pesa, el plano acompaña.
+ *
+ * Lo que el usuario haya puesto manda sobre esos dos valores por omisión.
+ */
+const opacidad = (capa: Capa) =>
+  capa.trazo?.opacidad ?? (capa.tema ? 0.62 : 0.18);
+
+/** Lo que el usuario escogió de grosor, o uno: el tamaño de siempre. */
+const grosor = (capa: Capa) => capa.trazo?.grosor ?? 1;
+
+/**
+ * Una rampa de tamaño por zoom, multiplicada por el grosor de la capa.
+ *
+ * Los tamaños del mapa crecen con el zoom —un punto de 2,5 px de lejos y de
+ * 6 px de cerca— y el grosor tiene que respetar esa rampa en vez de
+ * sustituirla por un número fijo: si no, al alejarse la capa engordada tapa
+ * la ciudad.
+ */
+const conGrosor = (capa: Capa, pares: number[]): unknown => {
+  const g = grosor(capa);
+  const expr: unknown[] = ["interpolate", ["linear"], ["zoom"]];
+  for (let i = 0; i < pares.length; i += 2)
+    expr.push(pares[i], pares[i + 1] * g);
+  return expr;
+};
 
 /** Solo las piezas de esta forma; una capa mixta trae de todo en una fuente. */
 const soloPoligonos: maplibregl.FilterSpecification = [
@@ -487,7 +511,7 @@ export default function Mapa({
         filter: soloPoligonos,
         paint: {
           "line-color": capa.tema ? "rgba(255,255,255,0.35)" : capa.color,
-          "line-width": capa.tema ? 0.6 : 1.1,
+          "line-width": (capa.tema ? 0.6 : 1.1) * grosor(capa),
         },
       });
     }
@@ -515,7 +539,10 @@ export default function Mapa({
         type: "line",
         source: fuente,
         filter: soloLineas,
-        paint: { "line-color": pintura(capa) as string, "line-width": 1.6 },
+        paint: {
+          "line-color": pintura(capa) as string,
+          "line-width": 1.6 * grosor(capa),
+        },
       });
     }
 
@@ -529,32 +556,15 @@ export default function Mapa({
         filter: soloPuntos,
         paint: capa.anillo
           ? {
-              "circle-radius": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                11,
-                4,
-                14,
-                6,
-                18,
-                10,
-              ],
+              "circle-radius": conGrosor(capa, [11, 4, 14, 6, 18, 10]) as never,
               "circle-color": "rgba(0,0,0,0)",
-              "circle-stroke-width": 2.2,
+              "circle-stroke-width": 2.2 * grosor(capa),
               "circle-stroke-color": pintura(capa) as string,
             }
           : {
-              "circle-radius": [
-                "interpolate",
-                ["linear"],
-                ["zoom"],
-                11,
-                2.5,
-                16,
-                6,
-              ],
+              "circle-radius": conGrosor(capa, [11, 2.5, 16, 6]) as never,
               "circle-color": pintura(capa) as string,
+              "circle-opacity": capa.trazo?.opacidad ?? 1,
               "circle-stroke-width": 0.8,
               "circle-stroke-color": "rgba(255,255,255,0.75)",
             },

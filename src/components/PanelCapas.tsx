@@ -48,6 +48,10 @@ interface Props {
   onFiltrar: (id: string, filtro: Filtro | null) => void;
   /** Pinta la capa por un campo. `null` la devuelve a su color plano. */
   onEstilo: (id: string, tema: Tema | null) => void;
+  /** Cambia el color plano de la capa. */
+  onColor: (id: string, color: string) => void;
+  /** Cambia el grosor y la opacidad del trazo. */
+  onTrazo: (id: string, trazo: { grosor: number; opacidad: number }) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -74,6 +78,8 @@ export default function PanelCapas({
   onEncuadrar,
   onFiltrar,
   onEstilo,
+  onColor,
+  onTrazo,
 }: Props) {
   const [encima, setEncima] = useState(false);
   /** Qué tarjeta tiene abierto su panel de filtro. */
@@ -396,7 +402,12 @@ export default function PanelCapas({
                 </div>
 
                 {pintando === c.id && (
-                  <CajaEstilo capa={c} onCambio={(x) => onEstilo(c.id, x)} />
+                  <CajaEstilo
+                    capa={c}
+                    onCambio={(x) => onEstilo(c.id, x)}
+                    onColor={(hex) => onColor(c.id, hex)}
+                    onTrazo={(x) => onTrazo(c.id, x)}
+                  />
                 )}
 
                 {filtrando === c.id && (
@@ -706,15 +717,26 @@ function CajaFiltro({
 function CajaEstilo({
   capa,
   onCambio,
+  onColor,
+  onTrazo,
 }: {
   capa: Capa;
   onCambio: (t: Tema | null) => void;
+  onColor: (hex: string) => void;
+  onTrazo: (t: { grosor: number; opacidad: number }) => void;
 }) {
   const campos = capa.campos.map((x) => x.nombre);
   const campo = capa.tema?.campo ?? "";
   const modo: "categorias" | "graduado" = capa.tema?.cortes
     ? "graduado"
     : "categorias";
+
+  // Los mismos valores por omision que usa el mapa, para que el deslizador
+  // arranque donde esta la capa y no en un sitio inventado.
+  const trazo = capa.trazo ?? {
+    grosor: 1,
+    opacidad: capa.tema ? 0.62 : 0.18,
+  };
 
   const elegirCampo = (n: string) => {
     if (!n) return onCambio(null);
@@ -731,6 +753,20 @@ function CajaEstilo({
 
   return (
     <div className="mt-1.5 space-y-1.5 rounded border border-[var(--gr-linea)] p-1.5">
+      {/* El color plano se edita siempre, tenga tema o no: es el que llevan
+          el borde del area y la capa cuando se le quita el tema. */}
+      <label className="flex items-center gap-2 text-[11px] text-[var(--gr-tinta-3)]">
+        <span>Color</span>
+        <input
+          type="color"
+          value={capa.color}
+          onChange={(e) => onColor(e.target.value)}
+          className="h-5 w-8 cursor-pointer rounded border border-[var(--gr-linea)] bg-transparent p-0"
+          title="El color de la capa"
+        />
+        <span className="gr-num">{capa.color}</span>
+      </label>
+
       <label className="block text-[11px] text-[var(--gr-tinta-3)]">
         Pintar por
         <select
@@ -786,9 +822,24 @@ function CajaEstilo({
               key={String(m.valor)}
               className="flex items-center gap-1.5 text-xs text-[var(--gr-tinta-2)]"
             >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                style={{ backgroundColor: m.color }}
+              {/* Cada categoria con su color editable: la paleta reparte una
+                  primera version razonable, pero quien conoce el dato sabe
+                  que «Salud» tiene que ser rojo. */}
+              <input
+                type="color"
+                value={m.color}
+                onChange={(e) =>
+                  onCambio({
+                    ...capa.tema!,
+                    coincidencias: capa.tema!.coincidencias!.map((x) =>
+                      x.valor === m.valor
+                        ? { ...x, color: e.target.value }
+                        : x,
+                    ),
+                  })
+                }
+                className="h-3.5 w-5 shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0"
+                title={`El color de «${String(m.valor)}»`}
               />
               <span className="truncate">{m.rotulo}</span>
             </li>
@@ -818,6 +869,41 @@ function CajaEstilo({
           {capa.tema.notaVacio}
         </p>
       )}
+
+      {/* Grosor y opacidad, que hasta ahora eran numeros fijos del mapa: un
+          catastro de cuarenta mil predios y una capa de tres zonas salian con
+          el mismo borde, y en el primero eso es una mancha. */}
+      <div className="space-y-1 border-t border-[var(--gr-linea)] pt-1.5">
+        {(
+          [
+            ["grosor", "Grosor", 0.25, 4, 0.25, trazo.grosor],
+            ["opacidad", "Opacidad", 0.05, 1, 0.05, trazo.opacidad],
+          ] as const
+        ).map(([clave, rotulo, min, max, paso, valor]) => (
+          <label
+            key={clave}
+            className="flex items-center gap-2 text-[11px] text-[var(--gr-tinta-3)]"
+          >
+            <span className="w-14 shrink-0">{rotulo}</span>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={paso}
+              value={valor}
+              onChange={(e) =>
+                onTrazo({ ...trazo, [clave]: Number(e.target.value) })
+              }
+              className="flex-1"
+            />
+            <span className="gr-num w-8 text-right">
+              {clave === "opacidad"
+                ? `${Math.round(valor * 100)}%`
+                : `${valor}×`}
+            </span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
