@@ -412,6 +412,13 @@ export default function Mapa({
        *
        * Ahora, sin elegida, la capa del relleno no se añade y la de las demás
        * va sin filtro: no hace falta inventarse condiciones imposibles.
+       *
+       * Y «sin filtro» quiere decir SIN LA CLAVE, no `filter: null`. MapLibre
+       * valida el valor igual que cualquier otro y contesta «array expected,
+       * null found», otra vez al añadir la capa y otra vez tumbando el resto
+       * del montaje: las capas de datos se añaden después de estas dos, así
+       * que el mapa se quedaba en blanco con «Rural» o «Todo el cantón»
+       * elegidos, que son justo los dos sitios donde no hay plataforma.
        */
       const clave = referencia.activa
         ? referencia.activa.replace("plataforma:", "")
@@ -433,7 +440,7 @@ export default function Mapa({
         id: "mirar-plataformas-resto",
         type: "line",
         source: "mirar-plataformas",
-        filter: otras as maplibregl.FilterSpecification,
+        ...(otras ? { filter: otras } : {}),
         paint: {
           "line-color": tenue,
           "line-width": 1,
@@ -441,13 +448,15 @@ export default function Mapa({
           "line-dasharray": [3, 2],
         },
       });
-      m.addLayer({
-        id: "mirar-plataformas-relleno",
-        type: "fill",
-        source: "mirar-plataformas",
-        filter: esta as maplibregl.FilterSpecification,
-        paint: { "fill-color": azul, "fill-opacity": 0.16 },
-      });
+      if (esta) {
+        m.addLayer({
+          id: "mirar-plataformas-relleno",
+          type: "fill",
+          source: "mirar-plataformas",
+          filter: esta,
+          paint: { "fill-color": azul, "fill-opacity": 0.16 },
+        });
+      }
     }
 
     // Dentro de cada pasada, la primera de la lista manda: se recorre al revés
