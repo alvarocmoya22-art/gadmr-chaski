@@ -411,12 +411,30 @@ export default function App() {
    * son una capa como cualquier otra y no tienen por qué mandar.
    */
   const referencia = useMemo(() => {
-    if (modo !== "mirar" || !capasMirar.plataformas) return null;
+    const capa = capasMirar.plataformas;
+    if (modo !== "mirar" || !capa) return null;
+
+    /*
+     * El telon RESPETA EL FILTRO de la capa, contornos y letras.
+     *
+     * Las plataformas no se pintan desde su capa en este modo —las pinta el
+     * mapa aparte para poder destacar la elegida—, y por eso el filtro no las
+     * alcanzaba: se filtraba a «PLATAFORMA M», la tarjeta decia «1 de 18» y
+     * el mapa seguia enseñando las dieciocho con sus dieciocho letras. Un
+     * filtro que la tarjeta dice y el mapa no obedece no es un filtro: es dos
+     * versiones del mismo dato en la misma pantalla.
+     */
+    const geo = filtrada(capa).geo;
+    const quedan = new Set(
+      geo.features.map((f) => String(f.properties?.clave ?? "")),
+    );
     return {
-      geo: capasMirar.plataformas.geo,
+      geo,
       activa:
         ambito?.nivel === "plataforma" ? ambito.clave : (ambito?.padre ?? null),
-      marcas: marcasDe(ambitos),
+      marcas: marcasDe(ambitos).filter((m) =>
+        quedan.has(m.clave.slice("plataforma:".length)),
+      ),
     };
   }, [modo, capasMirar.plataformas, ambito, ambitos]);
 

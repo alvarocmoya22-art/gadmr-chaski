@@ -559,10 +559,26 @@ function CajaFiltro({
   const [campo, setCampo] = useState(
     capa.filtro?.campo ?? porFiltrabilidad[0]?.nombre ?? "",
   );
-  const valores = useMemo(
+  const todos = useMemo(
     () => (campo ? valoresDe(capa.geo, campo) : []),
     [capa.geo, campo],
   );
+  /*
+   * Un buscador en cuanto la lista deja de caber de un vistazo.
+   *
+   * Con los 197 nombres de barrio, marcar tres concretos era bajar por una
+   * lista de doscientos a ojo. Doce es donde deja de verse entera sin hacer
+   * esfuerzo; por debajo, el buscador estorba mas de lo que ayuda.
+   */
+  const [busca, setBusca] = useState("");
+  const normal = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  const valores = busca.trim()
+    ? todos.filter((v) => normal(v.valor).includes(normal(busca.trim())))
+    : todos;
   // Los marcados son los del filtro SOLO si es de este campo: al cambiar de
   // campo, los valores de antes no significan nada aqui.
   const marcados = new Set(
@@ -584,8 +600,10 @@ function CajaFiltro({
     );
   }
 
+  // Sobre TODOS los valores y no sobre los que deja ver la busqueda: lo que
+  // queda en la capa no depende de lo que uno tenga escrito en el buscador.
   const quedan = marcados.size
-    ? valores.filter((v) => marcados.has(v.valor)).reduce((s, v) => s + v.n, 0)
+    ? todos.filter((v) => marcados.has(v.valor)).reduce((s, v) => s + v.n, 0)
     : capa.geo.features.length;
 
   return (
@@ -596,6 +614,7 @@ function CajaFiltro({
           value={campo}
           onChange={(e) => {
             setCampo(e.target.value);
+            setBusca("");
             // Cambiar de campo deja la capa entera: arrastrar los valores del
             // campo anterior filtraria por algo que ya no se esta mirando.
             onCambio(null);
@@ -610,7 +629,32 @@ function CajaFiltro({
         </select>
       </label>
 
+      {todos.length > 12 && (
+        <input
+          type="search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder={`Buscar entre ${numero(todos.length)} valores`}
+          className="w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+        />
+      )}
+
+      {/* Lo ya marcado se dice aunque la busqueda lo haya dejado fuera de la
+          lista: si no, uno busca «SANTA», ve ninguna marcada y cree que no
+          hay filtro puesto. */}
+      {marcados.size > 0 && valores.filter((v) => marcados.has(v.valor)).length <
+        marcados.size && (
+        <p className="text-[11px] text-[var(--gr-tinta-3)]">
+          {`${numero(marcados.size)} marcados, algunos fuera de la búsqueda.`}
+        </p>
+      )}
+
       <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+        {valores.length === 0 && (
+          <li className="text-xs text-[var(--gr-tinta-3)]">
+            Ningún valor con ese texto.
+          </li>
+        )}
         {valores.map((v) => (
           <li key={v.valor}>
             <label className="flex items-center gap-1.5 text-xs text-[var(--gr-tinta-2)]">
