@@ -12,7 +12,8 @@
  */
 import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from "./geo";
 import { areaM2 } from "./medidas";
-import { aMulti, intersecar, planoDe } from "./geoproceso";
+import { aMulti, intersecar, planoDe, type Multi } from "./geoproceso";
+import type { Plano } from "./metrico";
 import { ORIGEN_VISOR } from "./municipio";
 import { numero } from "./format";
 import type { Capa, Fila } from "./cargar";
@@ -440,8 +441,248 @@ function centroDeRasgo(f: GeoJSON.Feature): [number, number] | null {
 }
 
 /** Cierto si el punto cae en el ámbito. */
-const dentro = (a: Ambito, lon: number, lat: number) =>
-  a.piezas.some((p) => enPoligono(lon, lat, p));
+const dentro = (a: Ambito, lon: number, lat: number) => {
+  // Por la caja de cada pieza antes de recorrer sus esquinas: lo rural son
+  // veinticinco piezas y 8.343 esquinas, y un punto cae como mucho en una.
+  const { cajas } = rejaDe(a);
+  for (let i = 0; i < a.piezas.length; i++) {
+    const [o, s, e, n] = cajas[i];
+    if (lon < o || lon > e || lat < s || lat > n) continue;
+    if (enPoligono(lon, lat, a.piezas[i])) return true;
+  }
+  return false;
+};
+
+/**
+ * Por dónde pasa el contorno de una zona, en una rejilla.
+ *
+ * EL PORQUÉ. El descarte por caja que hay al entrar en `perteneceA` funciona
+ * con una plataforma —su caja es un trozo de ciudad y tira el 99 % de los
+ * rasgos de golpe—, pero NO funciona con «Rural»: su caja es el cantón
+ * entero, así que no descarta ni uno. Medido sobre el catastro: de sus 41.681
+ * predios, con «Urbano» 41.677 se resuelven por el centro y solo 4 llegan al
+ * camino caro; con «Rural» llegan 41.679. Y ese camino caro es cortar el
+ * predio contra las 8.343 esquinas de lo rural: 12,3 ms cada uno, o sea ocho
+ * minutos y medio de pantalla colgada por elegir «Rural».
+ *
+ * LA SALIDA. Un rasgo que no toca el CONTORNO de la zona está entero dentro o
+ * entero fuera, y eso lo dice cualquiera de sus puntos: no hay nada que
+ * cortar. Solo hace falta saber deprisa si el contorno le pasa cerca, y para
+ * eso se marca de antemano por qué celdas pasa. Mirar un puñado de celdas es
+ * aritmética; cortar polígonos no.
+ *
+ * Se marca la CAJA de cada segmento, no las celdas exactas que pisa. Marca de
+ * más, nunca de menos: alguna celda queda señalada sin que el contorno la
+ * cruce y ese rasgo se va al camino caro igual que antes —lento, pero
+ * correcto—. Al revés sí importaría, y por eso no se hace al revés.
+ */
+interface Reja {
+  cols: number;
+  filas: number;
+  anchoX: number;
+  anchoY: number;
+  /** Una marca por celda: si el contorno de la zona pasa por ella. */
+  ocupada: Uint8Array;
+  /** La caja de cada pieza, para no recorrerlas todas en cada punto. */
+  cajas: Caja[];
+  /** El ámbito entero, ya en forma de multipolígono. */
+  entero: Multi;
+  /**
+   * El plano métrico de la zona, uno solo para todos sus cortes.
+   *
+   * Tiene que ser el mismo para que los trozos encajen entre sí. No afecta a
+   * ninguna cifra: las superficies se siguen midiendo sobre el elipsoide, a
+   * partir de la geometría en grados que devuelve el corte.
+   */
+  plano: Plano;
+  /** La zona recortada a cada cuadro, según se va necesitando. */
+  trozos: Map<string, Multi>;
+  /**
+   * Si la zona es tan pequeña que partirla no compensa.
+   *
+   * Una plataforma o un barrio tienen unas pocas decenas de esquinas: cortar
+   * contra ellos ya era barato y aquí no había ningún problema que resolver.
+   */
+  menuda: boolean;
+}
+
+/**
+ * Se arma una sola vez por ámbito.
+ *
+ * En un mapa débil para que se vaya con el ámbito: al recargar las capas los
+ * ámbitos son otros objetos y las rejas viejas sobran.
+ */
+const rejas = new WeakMap<Ambito, Reja>();
+
+/** Celdas a lo ancho. En lo rural, unos doscientos metros cada una. */
+const CELDAS = 256;
+
+function rejaDe(a: Ambito): Reja {
+  const hecha = rejas.get(a);
+  if (hecha) return hecha;
+
+  const [o, s, e, n] = a.caja;
+  const anchoX = Math.max((e - o) / CELDAS, 1e-9);
+  const anchoY = Math.max((n - s) / CELDAS, 1e-9);
+  const cols = Math.max(1, Math.min(CELDAS, Math.ceil((e - o) / anchoX)));
+  const filas = Math.max(1, Math.min(CELDAS, Math.ceil((n - s) / anchoY)));
+  const ocupada = new Uint8Array(cols * filas);
+
+  for (const pieza of a.piezas) {
+    for (const anillo of pieza) {
+      for (let i = 1; i < anillo.length; i++) {
+        const [x1, y1] = anillo[i - 1];
+        const [x2, y2] = anillo[i];
+        const ci = Math.max(0, Math.floor((Math.min(x1, x2) - o) / anchoX));
+        const cf = Math.min(cols - 1, Math.floor((Math.max(x1, x2) - o) / anchoX));
+        const fi = Math.max(0, Math.floor((Math.min(y1, y2) - s) / anchoY));
+        const ff = Math.min(filas - 1, Math.floor((Math.max(y1, y2) - s) / anchoY));
+        for (let c = ci; c <= cf; c++) {
+          for (let f = fi; f <= ff; f++) ocupada[f * cols + c] = 1;
+        }
+      }
+    }
+  }
+
+  const reja: Reja = {
+    cols,
+    filas,
+    anchoX,
+    anchoY,
+    ocupada,
+    cajas: a.piezas.map((pieza) => cajaDe(pieza)),
+    entero: a.piezas.map((pieza) => pieza.map((anillo) => anillo.map((p) => [p[0], p[1]]))),
+    plano: planoDe([comoArea(a)]),
+    trozos: new Map(),
+    menuda: a.piezas.reduce((s, p) => s + p.reduce((q, an) => q + an.length, 0), 0) < 500,
+  };
+  rejas.set(a, reja);
+  return reja;
+}
+
+/**
+ * Si el contorno de la zona pasa por la caja de un rasgo.
+ *
+ * Falso quiere decir algo fuerte: dentro de esa caja la zona es todo o es
+ * nada, así que el rasgo está entero a un lado y basta con mirar un punto
+ * suyo. Las celdas que caen fuera de la caja de la zona no se miran y no hace
+ * falta: ahí tampoco hay contorno, y son terreno de fuera.
+ */
+function rozaElContorno(
+  a: Ambito,
+  oeste: number,
+  sur: number,
+  este: number,
+  norte: number,
+): boolean {
+  const r = rejaDe(a);
+  const [o, s] = a.caja;
+  const ci = Math.max(0, Math.floor((oeste - o) / r.anchoX));
+  const cf = Math.min(r.cols - 1, Math.floor((este - o) / r.anchoX));
+  const fi = Math.max(0, Math.floor((sur - s) / r.anchoY));
+  const ff = Math.min(r.filas - 1, Math.floor((norte - s) / r.anchoY));
+  for (let c = ci; c <= cf; c++) {
+    for (let f = fi; f <= ff; f++) if (r.ocupada[f * r.cols + c]) return true;
+  }
+  return false;
+}
+
+/**
+ * A cuántos cuadros se parte la zona por lado: treinta y dos.
+ *
+ * En lo rural eso son cuadros de kilómetro y medio, con unas pocas centenas
+ * de esquinas cada uno en vez de las 8.343 de la zona entera.
+ */
+const NIVEL_TROZO = 5;
+
+/**
+ * La zona recortada a un cuadro del mapa.
+ *
+ * SE PARTE EN DOS EL PROBLEMA. Cortar un predio contra lo rural cuesta 12,3
+ * ms porque lo caro no es el predio —cinco esquinas— sino la zona. Así que
+ * se corta la zona UNA VEZ contra una cuadrícula, y cada predio se corta
+ * después contra el cuadro que le toca, que es pequeño.
+ *
+ * Y el recorte de cada cuadro no se hace contra la zona entera, sino contra
+ * su cuadro padre, que ya está recortado: bajar los cinco niveles cuesta
+ * cinco cortes contra algo cada vez más pequeño, en lugar de uno contra las
+ * 8.343 esquinas. Medido sobre el catastro contra lo rural: 39 cuadros
+ * calculados y 559 ms en total, frente a los 513 s de cortar predio a predio.
+ *
+ * Solo se calculan los cuadros por los que alguien pregunta, y se guardan.
+ */
+function trozoDe(a: Ambito, nivel: number, cx: number, cy: number): Multi {
+  const r = rejaDe(a);
+  if (nivel === 0) return r.entero;
+
+  const clave = `${nivel}:${cx}:${cy}`;
+  const hecho = r.trozos.get(clave);
+  if (hecho) return hecho;
+
+  const padre = trozoDe(a, nivel - 1, cx >> 1, cy >> 1);
+  let trozo: Multi = [];
+  // Si en el cuadro de arriba no había zona, aquí tampoco: no hay nada que
+  // cortar y el vacío se guarda igual, para no volver a preguntarlo.
+  if (padre.length > 0) {
+    const [o, s, e, n] = a.caja;
+    const lado = 1 << nivel;
+    const anchoX = (e - o) / lado;
+    const anchoY = (n - s) / lado;
+    const x1 = o + cx * anchoX;
+    const x2 = x1 + anchoX;
+    const y1 = s + cy * anchoY;
+    const y2 = y1 + anchoY;
+    const cuadro: Multi = [
+      [
+        [
+          [x1, y1],
+          [x2, y1],
+          [x2, y2],
+          [x1, y2],
+          [x1, y1],
+        ],
+      ],
+    ];
+    trozo = intersecar(padre, cuadro, r.plano) ?? [];
+  }
+  r.trozos.set(clave, trozo);
+  return trozo;
+}
+
+/**
+ * La zona, pero solo donde cae la caja de un rasgo.
+ *
+ * Vale para medir lo que comparten: lo que el rasgo tenga fuera de esta caja
+ * no puede estar dentro de la zona, así que no hay superficie que perder. Los
+ * bordes que la cuadrícula introduce son de mentira, y por eso esto NO se usa
+ * para saber si un contorno cruza el otro —ahí se mira la zona de verdad—,
+ * solo para medir.
+ */
+function ambitoCerca(
+  a: Ambito,
+  oeste: number,
+  sur: number,
+  este: number,
+  norte: number,
+): Multi {
+  const r = rejaDe(a);
+  if (r.menuda) return r.entero;
+
+  const [o, s, e, n] = a.caja;
+  const lado = 1 << NIVEL_TROZO;
+  const anchoX = (e - o) / lado;
+  const anchoY = (n - s) / lado;
+  const ci = Math.max(0, Math.floor((oeste - o) / anchoX));
+  const cf = Math.min(lado - 1, Math.floor((este - o) / anchoX));
+  const fi = Math.max(0, Math.floor((sur - s) / anchoY));
+  const ff = Math.min(lado - 1, Math.floor((norte - s) / anchoY));
+
+  const salida: Multi = [];
+  for (let c = ci; c <= cf; c++) {
+    for (let f = fi; f <= ff; f++) salida.push(...trozoDe(a, NIVEL_TROZO, c, f));
+  }
+  return salida;
+}
 
 /**
  * Las cifras de un ámbito, listas para la franja.
@@ -716,6 +957,23 @@ function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
   const esArea = g.type === "Polygon" || g.type === "MultiPolygon";
 
   /*
+   * Y ahora lo que de verdad salva lo rural: ¿le pasa el contorno por encima?
+   *
+   * Si no le pasa, el rasgo está entero dentro o entero fuera de la zona, y
+   * lo dice una esquina cualquiera suya. Sin esto, elegir «Rural» mandaba los
+   * 41.679 predios del catastro que quedan fuera a cortarse uno a uno contra
+   * las 8.343 esquinas de lo rural. Con esto solo se cortan los del borde,
+   * que son los únicos dudosos.
+   *
+   * Esto NO cambia ninguna respuesta: cuando el contorno sí pasa cerca, la
+   * decisión la siguen tomando las mismas reglas de abajo, intactas.
+   */
+  if (!rozaElContorno(a, oeste, sur, este, norte)) {
+    const [x, y] = vertices[0];
+    return dentro(a, x, y);
+  }
+
+  /*
    * Puntos y líneas: con que algo suyo caiga dentro, basta.
    *
    * Para las ÁREAS no vale ese atajo. Un punto que cae justo en el límite
@@ -767,8 +1025,9 @@ function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
    * Se exige un solape de verdad. La cuenta solo se hace aquí, que es el caso
    * dudoso y el raro: lo que tiene un vértice dentro ya salió por arriba.
    */
-  const plano = planoDe([g, comoArea(a)]);
-  const trozos = intersecar(aMulti(g), aMulti(comoArea(a)), plano) ?? [];
+  const cerca = ambitoCerca(a, oeste, sur, este, norte);
+  if (cerca.length === 0) return false;
+  const trozos = intersecar(aMulti(g), cerca, rejaDe(a).plano) ?? [];
   const compartido = trozos.reduce(
     (s, poly) =>
       s + areaM2({ type: "Polygon", coordinates: poly as number[][][] }),
