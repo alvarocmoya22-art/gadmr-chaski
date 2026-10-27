@@ -21,6 +21,8 @@ import {
   valoresDe,
   type Filtro,
 } from "../lib/filtro";
+import { distintosDe, esNumerico, temaDe } from "../lib/estilo";
+import type { Tema } from "../lib/medidas";
 
 const FORMA: Record<Capa["forma"], string> = {
   punto: "puntos",
@@ -44,6 +46,8 @@ interface Props {
   onEncuadrar: (id: string) => void;
   /** Pone o quita el filtro por tabla de una capa. `null` lo quita. */
   onFiltrar: (id: string, filtro: Filtro | null) => void;
+  /** Pinta la capa por un campo. `null` la devuelve a su color plano. */
+  onEstilo: (id: string, tema: Tema | null) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -69,10 +73,13 @@ export default function PanelCapas({
   onQuitar,
   onEncuadrar,
   onFiltrar,
+  onEstilo,
 }: Props) {
   const [encima, setEncima] = useState(false);
   /** Qué tarjeta tiene abierto su panel de filtro. */
   const [filtrando, setFiltrando] = useState("");
+  /** Qué tarjeta tiene abierto su panel de estilo. */
+  const [pintando, setPintando] = useState("");
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   const [catalogoAbierto, setCatalogoAbierto] = useState(false);
   const [abierta, setAbierta] = useState<string | null>(null);
@@ -355,6 +362,17 @@ export default function PanelCapas({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setPintando(pintando === c.id ? "" : c.id)}
+                    className={
+                      c.tema
+                        ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
+                        : "text-[var(--gr-azul-500)] hover:underline"
+                    }
+                  >
+                    {pintando === c.id ? "Cerrar estilo" : "Estilo"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onEncuadrar(c.id)}
                     className="text-[var(--gr-azul-500)] hover:underline"
                   >
@@ -376,6 +394,10 @@ export default function PanelCapas({
                     Quitar
                   </button>
                 </div>
+
+                {pintando === c.id && (
+                  <CajaEstilo capa={c} onCambio={(x) => onEstilo(c.id, x)} />
+                )}
 
                 {filtrando === c.id && (
                   <CajaFiltro
@@ -622,6 +644,136 @@ function CajaFiltro({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * El estilo de una capa: pintarla por uno de sus campos.
+ *
+ * Pone el mismo `Tema` que dejan las herramientas, asi que el mapa y la
+ * leyenda lo entienden sin tocar nada mas.
+ *
+ * El modo —categorias o graduado— lo propone la capa mirando el campo, pero
+ * se puede cambiar: hay columnas de numeros que son codigos y no cantidades
+ * —una clave catastral, un año—, y pintarlas de claro a oscuro insinua un
+ * «mas y menos» que no significa nada.
+ */
+function CajaEstilo({
+  capa,
+  onCambio,
+}: {
+  capa: Capa;
+  onCambio: (t: Tema | null) => void;
+}) {
+  const campos = capa.campos.map((x) => x.nombre);
+  const campo = capa.tema?.campo ?? "";
+  const modo: "categorias" | "graduado" = capa.tema?.cortes
+    ? "graduado"
+    : "categorias";
+
+  const elegirCampo = (n: string) => {
+    if (!n) return onCambio(null);
+    onCambio(temaDe(capa.geo, n));
+  };
+
+  if (campos.length === 0) {
+    return (
+      <p className="mt-1.5 text-xs text-[var(--gr-tinta-3)]">
+        Esta capa no trae tabla: solo se puede pintar de un color.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 space-y-1.5 rounded border border-[var(--gr-linea)] p-1.5">
+      <label className="block text-[11px] text-[var(--gr-tinta-3)]">
+        Pintar por
+        <select
+          value={campo}
+          onChange={(e) => elegirCampo(e.target.value)}
+          className="mt-0.5 w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+        >
+          <option value="">Un solo color</option>
+          {campos.map((n) => (
+            <option key={n} value={n}>
+              {n}
+              {esNumerico(capa.geo, n)
+                ? " · números"
+                : ` · ${distintosDe(capa.geo, n)} valores`}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {campo && (
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-[var(--gr-tinta-3)]">Como</span>
+          {(["categorias", "graduado"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onCambio(temaDe(capa.geo, campo, m))}
+              className={
+                modo === m
+                  ? "font-semibold text-[var(--gr-azul-500)]"
+                  : "text-[var(--gr-tinta-3)] hover:underline"
+              }
+            >
+              {m === "categorias" ? "categorías" : "escala"}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onCambio(null)}
+            className="ml-auto text-[var(--gr-rojo-500)] hover:underline"
+          >
+            Quitar el estilo
+          </button>
+        </div>
+      )}
+
+      {/* La leyenda, aqui mismo: un color que hay que ir a buscar a otra
+          pestaña para saber que quiere decir no es una leyenda. */}
+      {capa.tema?.coincidencias && (
+        <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+          {capa.tema.coincidencias.map((m) => (
+            <li
+              key={String(m.valor)}
+              className="flex items-center gap-1.5 text-xs text-[var(--gr-tinta-2)]"
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: m.color }}
+              />
+              <span className="truncate">{m.rotulo}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* La escala tiene su leyenda igual que las categorias: elegir «escala»
+          y no ver los tramos deja el color sin significado. */}
+      {capa.tema?.cortes && (
+        <ul className="space-y-0.5">
+          {tramos(capa.tema.cortes).map((r, i) => (
+            <li
+              key={r}
+              className="flex items-center gap-1.5 text-xs text-[var(--gr-tinta-2)]"
+            >
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: (capa.tema?.colores ?? [])[i] }}
+              />
+              <span className="truncate">{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {capa.tema?.notaVacio && (
+        <p className="text-[11px] text-[var(--gr-tinta-3)]">
+          {capa.tema.notaVacio}
+        </p>
+      )}
     </div>
   );
 }

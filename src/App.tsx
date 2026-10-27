@@ -1170,6 +1170,13 @@ export default function App() {
                   ),
                 )
               }
+              onEstilo={(id, tema) =>
+                setCapas((cs) =>
+                  cs.map((c) =>
+                    c.id === id ? { ...c, tema: tema ?? undefined } : c,
+                  ),
+                )
+              }
               base={
                 <PanelBase
                   conexiones={conexiones}

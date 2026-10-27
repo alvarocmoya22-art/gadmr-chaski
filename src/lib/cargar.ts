@@ -90,8 +90,14 @@ export interface Capa {
   fechas?: Fechas[];
 }
 
-/** La paleta del sistema, para que cada capa nueva entre con un color propio. */
-const COLORES = [
+/**
+ * La paleta del sistema, para que cada capa nueva entre con un color propio.
+ *
+ * Tambien es la que reparte los colores al pintar una capa POR CATEGORIAS, y
+ * a proposito: dos sitios distintos con dos paletas distintas significan que
+ * el mismo valor sale de un color en el mapa y de otro en la leyenda.
+ */
+export const PALETA_CAPAS = [
   "#2c6fb5",
   "#2f8f5b",
   "#c9752b",
@@ -105,7 +111,8 @@ const COLORES = [
 let siguiente = 0;
 
 /** El color que le toca a la siguiente capa. */
-export const colorSiguiente = () => COLORES[siguiente++ % COLORES.length];
+export const colorSiguiente = () =>
+  PALETA_CAPAS[siguiente++ % PALETA_CAPAS.length];
 
 /** Un identificador que no choca con los ya repartidos. */
 export const idNuevo = () => `c${Date.now()}${siguiente}`;
