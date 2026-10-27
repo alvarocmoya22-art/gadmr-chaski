@@ -56,6 +56,7 @@ import {
   marcasDe,
   recorteDe,
   temaDeTipos,
+  VACIA,
 } from "./lib/mirar";
 import {
   explicarFallo,
@@ -94,6 +95,7 @@ import {
 import { TODA_LA_CATEGORIA } from "./lib/hotspot";
 import { MAPA_BASE_INICIAL } from "./config/mapasBase";
 import { numero } from "./lib/format";
+import { filtrada } from "./lib/filtro";
 
 /** Lo que hay que dibujar del último cálculo, además de su capa. */
 interface Ultimo {
@@ -334,6 +336,128 @@ export default function App() {
    * Es el único camino: las preguntas y la caja de herramientas acaban las dos
    * aquí, con la misma capa, la misma herramienta y los mismos valores.
    */
+  /*
+   * Esto va ANTES de los ejecutores a proposito.
+   *
+   * `ejecutar`, el flujo y el informe corren sobre `preparadas`, asi que
+   * tienen que poder declararla en sus dependencias. Declarada despues, la
+   * lista de dependencias se evalua con la variable aun sin inicializar; y
+   * dejandola fuera de la lista, el ejecutor se queda con el recorte de
+   * antes y calcula sobre la zona anterior sin que nada lo diga.
+   */
+  /* ── Modo Mirar ─────────────────────────────────────────────────────── */
+
+  const porNombre = useCallback(
+    (nombre: string) =>
+      capas.find((c) => c.nombre === nombre && !c.derivada) ?? null,
+    [capas],
+  );
+  const capasMirar = useMemo(
+    () => ({
+      parroquias: porNombre("Parroquias"),
+      limiteUrbano: porNombre("Límite urbano"),
+      clasificacion: porNombre("Clasificación del suelo"),
+      plataformas: porNombre("Plataformas"),
+      barrios: porNombre("Barrios"),
+      equipamientos: porNombre("Equipamientos"),
+    }),
+    [porNombre],
+  );
+  const mirarListo = Boolean(capasMirar.plataformas && capasMirar.barrios);
+
+  useEffect(() => {
+    if (modo !== "mirar" || poblacion) return;
+    void cargarPoblacion().then((p) => {
+      if (!p) return;
+      setPoblacion(p);
+      setFuentePoblacion(p.fuente);
+    });
+  }, [modo, poblacion]);
+
+  const ambitos = useMemo(
+    () =>
+      ambitosDe(
+        capasMirar.parroquias,
+        capasMirar.limiteUrbano,
+        capasMirar.clasificacion,
+        capasMirar.plataformas,
+        capasMirar.barrios,
+        poblacion,
+      ),
+    [
+      capasMirar.parroquias,
+      capasMirar.limiteUrbano,
+      capasMirar.clasificacion,
+      capasMirar.plataformas,
+      capasMirar.barrios,
+      poblacion,
+    ],
+  );
+  const ambito = useMemo(
+    () => ambitos.find((a) => a.clave === ambitoElegido) ?? ambitos[0] ?? null,
+    [ambitos, ambitoElegido],
+  );
+  const lectura = useMemo(
+    () =>
+      ambito
+        ? leerAmbito(ambito, capasMirar.equipamientos, ambitos)
+        : { cifras: [], tipos: [] },
+    [ambito, capasMirar.equipamientos, ambitos],
+  );
+
+  /*
+   * El telón de fondo del modo Mirar: las dieciocho plataformas, con la
+   * elegida destacada. Fuera de Mirar no se pone, porque ahí las plataformas
+   * son una capa como cualquier otra y no tienen por qué mandar.
+   */
+  const referencia = useMemo(() => {
+    if (modo !== "mirar" || !capasMirar.plataformas) return null;
+    return {
+      geo: capasMirar.plataformas.geo,
+      activa:
+        ambito?.nivel === "plataforma" ? ambito.clave : (ambito?.padre ?? null),
+      marcas: marcasDe(ambitos),
+    };
+  }, [modo, capasMirar.plataformas, ambito, ambitos]);
+
+  /**
+   * LAS CAPAS PREPARADAS: la mesa recortada a la zona elegida en Mirar.
+   *
+   * Esto es lo que ve todo el programa menos la mesa misma: el mapa, las
+   * herramientas, los flujos y el informe. Elegir una zona en Mirar no es
+   * mirar: es DEJAR PREPARADO sobre qué se trabaja.
+   *
+   * ANTES NO ERA ASI, Y ESE ERA EL FALLO. El recorte se calculaba dentro de
+   * `dibujo` y `dibujo.capas` solo se le pasaba al mapa; las herramientas
+   * recibian `capas`, la mesa entera. Se elegia «Urbano», el mapa enseñaba lo
+   * urbano, se pasaba a Analizar y la cuenta salia sobre el canton entero sin
+   * que nada lo dijera. Un numero equivocado que no se queja es el peor de
+   * los fallos, porque acaba en un informe.
+   *
+   * No depende del modo a proposito: la zona se elige en Mirar pero vale
+   * mientras siga elegida, que es justo lo que hace falta para ir a Analizar
+   * con ella puesta. Y la mesa no se toca: al volver a «Todo el canton»
+   * reaparece todo.
+   */
+  const preparadas = useMemo(() => {
+    /*
+     * Dos recortes, y en este orden.
+     *
+     * Primero el filtro de cada capa por su tabla —`clase = urbano`—, que es
+     * una propiedad de la capa y no sabe nada del territorio. Despues el
+     * recorte a la zona de Mirar, que si sabe. Al reves daria lo mismo en el
+     * resultado pero costaria mas: la zona se mide contra menos rasgos si el
+     * filtro ya quito los que no interesan.
+     */
+    const filtradas = capas.map(filtrada);
+    if (!ambito || ambito.nivel === "canton") return filtradas;
+    const recorte = recorteDe(ambito, filtradas, capasMirar);
+    return filtradas.map((c) => {
+      const geo = recorte.get(c.id);
+      return geo ? { ...c, geo } : c;
+    });
+  }, [ambito, capas, capasMirar]);
+
   const ejecutar = useCallback(
     (
       laCapa: Capa,
@@ -349,10 +473,18 @@ export default function App() {
        * congelada sin explicar por qué.
        */
       setTimeout(() => {
+        /*
+         * Sobre las capas PREPARADAS, no sobre la mesa entera.
+         *
+         * Y la capa de entrada tambien: si esta recortada en el mapa pero se
+         * le pasa entera a la herramienta, el resultado habla de un
+         * territorio que no es el que se esta mirando.
+         */
+        const laPreparada = preparadas.find((c) => c.id === laCapa.id) ?? laCapa;
         const salida = laHerramienta.correr({
-          capa: laCapa,
+          capa: laPreparada,
           valores: losValores,
-          capas,
+          capas: preparadas,
         });
         if ("error" in salida) {
           setError(salida.error);
@@ -369,7 +501,7 @@ export default function App() {
         setCalculando(false);
       }, 30);
     },
-    [capas],
+    [preparadas],
   );
 
   /*
@@ -390,7 +522,9 @@ export default function App() {
     // La misma pausa que en una herramienta suelta: los cálculos son
     // sincrónicos y sin esto el navegador no llega a pintar el «Corriendo…».
     setTimeout(() => {
-      const { marchas: nuevas, hechos } = correrFlujo(pasos, capas);
+      // Sobre las capas preparadas, igual que una herramienta suelta: un
+      // flujo es una cadena de ellas y no puede mirar otro territorio.
+      const { marchas: nuevas, hechos } = correrFlujo(pasos, preparadas);
       setMarchas(nuevas);
       /*
        * Solo se enseña en el mapa lo que dejó el ÚLTIMO paso que salió bien.
@@ -415,7 +549,7 @@ export default function App() {
       setCalculando(false);
       void hechos;
     }, 30);
-  }, [pasos, capas]);
+  }, [pasos, preparadas]);
 
   /** Deja en la mesa la capa que produjo un paso. */
   const guardarDeFlujo = useCallback((c: Capa) => {
@@ -476,7 +610,7 @@ export default function App() {
         return;
       }
       const capaZonas =
-        capas.find((c) => c.id === ajustesInforme.zonas) ?? null;
+        preparadas.find((c) => c.id === ajustesInforme.zonas) ?? null;
 
       const nuevas: Capa[] = [];
       let capaPrincipal: string | null = null;
@@ -485,7 +619,7 @@ export default function App() {
         const h = HERRAMIENTAS.find((x) => x.clave === "agregar-puntos")!;
         const r = h.correr({
           capa: reg,
-          capas,
+          capas: preparadas,
           valores: {
             ...valoresIniciales("agregar-puntos"),
             zonas: capaZonas.id,
@@ -503,7 +637,7 @@ export default function App() {
       const hs = HERRAMIENTAS.find((x) => x.clave === "hotspot")!;
       const rh = hs.correr({
         capa: reg,
-        capas,
+        capas: preparadas,
         valores: {
           ...valoresIniciales("hotspot"),
           campo: campo ?? "",
@@ -537,7 +671,7 @@ export default function App() {
       setRecados([]);
       setCalculando(false);
     }, 30);
-  }, [ajustesInforme, capas]);
+  }, [ajustesInforme, preparadas]);
 
   const abrirLamina = useCallback(async () => {
     // La foto se resuelve cuando el mapa deja de dibujar; puede tardar un par
@@ -800,90 +934,15 @@ export default function App() {
     [baseUrl, cabeceras, recibir],
   );
 
-  /* ── Modo Mirar ─────────────────────────────────────────────────────── */
-
-  const porNombre = useCallback(
-    (nombre: string) =>
-      capas.find((c) => c.nombre === nombre && !c.derivada) ?? null,
-    [capas],
-  );
-  const capasMirar = useMemo(
-    () => ({
-      parroquias: porNombre("Parroquias"),
-      limiteUrbano: porNombre("Límite urbano"),
-      clasificacion: porNombre("Clasificación del suelo"),
-      plataformas: porNombre("Plataformas"),
-      barrios: porNombre("Barrios"),
-      equipamientos: porNombre("Equipamientos"),
-    }),
-    [porNombre],
-  );
-  const mirarListo = Boolean(capasMirar.plataformas && capasMirar.barrios);
-
-  useEffect(() => {
-    if (modo !== "mirar" || poblacion) return;
-    void cargarPoblacion().then((p) => {
-      if (!p) return;
-      setPoblacion(p);
-      setFuentePoblacion(p.fuente);
-    });
-  }, [modo, poblacion]);
-
-  const ambitos = useMemo(
-    () =>
-      ambitosDe(
-        capasMirar.parroquias,
-        capasMirar.limiteUrbano,
-        capasMirar.clasificacion,
-        capasMirar.plataformas,
-        capasMirar.barrios,
-        poblacion,
-      ),
-    [
-      capasMirar.parroquias,
-      capasMirar.limiteUrbano,
-      capasMirar.clasificacion,
-      capasMirar.plataformas,
-      capasMirar.barrios,
-      poblacion,
-    ],
-  );
-  const ambito = useMemo(
-    () => ambitos.find((a) => a.clave === ambitoElegido) ?? ambitos[0] ?? null,
-    [ambitos, ambitoElegido],
-  );
-  const lectura = useMemo(
-    () =>
-      ambito
-        ? leerAmbito(ambito, capasMirar.equipamientos, ambitos)
-        : { cifras: [], tipos: [] },
-    [ambito, capasMirar.equipamientos, ambitos],
-  );
-
-  /*
-   * El telón de fondo del modo Mirar: las dieciocho plataformas, con la
-   * elegida destacada. Fuera de Mirar no se pone, porque ahí las plataformas
-   * son una capa como cualquier otra y no tienen por qué mandar.
-   */
-  const referencia = useMemo(() => {
-    if (modo !== "mirar" || !capasMirar.plataformas) return null;
-    return {
-      geo: capasMirar.plataformas.geo,
-      activa:
-        ambito?.nivel === "plataforma" ? ambito.clave : (ambito?.padre ?? null),
-      marcas: marcasDe(ambitos),
-    };
-  }, [modo, capasMirar.plataformas, ambito, ambitos]);
 
   /**
-   * Lo que se dibuja, que no siempre es lo que hay en la mesa.
+   * Lo que se dibuja, que no siempre es lo que hay preparado.
    *
-   * Con una zona elegida en Mirar, el mapa enseña esa zona y lo que cae
-   * dentro. La mesa no se toca: al volver al ámbito urbano reaparece todo.
+   * Parte de las capas preparadas y solo decide PINTURA: el telon de las
+   * plataformas y el anillo de los equipamientos.
    */
   const dibujo = useMemo(() => {
-    if (modo !== "mirar" || !ambito) return { capas, enZona: [] };
-    const recorte = recorteDe(ambito, capas, capasMirar);
+    if (modo !== "mirar" || !ambito) return { capas: preparadas, enZona: [] };
     /*
      * Cuánto queda de cada capa en la zona.
      *
@@ -891,16 +950,31 @@ export default function App() {
      * menos calles y no sabe si es que hay menos o si se perdieron por el
      * camino. Con «569 de 9.553» se sabe qué se está mirando.
      */
-    const enZona = capas
+    const enZona = preparadas
       .filter((c) => c.visible && c.id !== capasMirar.plataformas?.id)
       .map((c) => ({
         nombre: c.nombre,
-        dentro: recorte.get(c.id)?.features.length ?? c.geo.features.length,
-        total: c.geo.features.length,
+        dentro: c.geo.features.length,
+        // Por identificador y NO por posicion: `preparadas` se filtra antes
+        // de llegar aqui, asi que el indice ya no es el de la mesa. Con el
+        // indice, la tabla decia «Clasificacion del suelo 17 de 18», que es
+        // el total de las plataformas puesto bajo otro nombre.
+        total:
+          capas.find((x) => x.id === c.id)?.geo.features.length ??
+          c.geo.features.length,
       }));
-    const dibujadas = capas.map((c) => {
-      const geo = recorte.get(c.id);
-      const base = geo ? { ...c, geo } : c;
+    const dibujadas = preparadas.map((c) => {
+      /*
+       * Las plataformas no se pintan desde su capa en este modo: las pinta el
+       * mapa aparte, que es el unico sitio donde se puede distinguir la
+       * elegida —relleno y contorno grueso— de las vecinas. Dejarlas tambien
+       * aqui las pintaria dos veces.
+       *
+       * Va aqui y no en el recorte porque es una decision de DIBUJO: metida
+       * en el recorte, las plataformas desaparecian tambien del analisis.
+       */
+      if (c.id === capasMirar.plataformas?.id) return { ...c, geo: VACIA };
+      const base = c;
       /*
        * Los equipamientos, por tipo y en anillo.
        *
@@ -916,7 +990,7 @@ export default function App() {
       return { ...base, tema: temaDeTipos(), anillo: true };
     });
     return { capas: dibujadas, enZona };
-  }, [modo, ambito, capas, capasMirar]);
+  }, [modo, ambito, capas, preparadas, capasMirar]);
 
   /** Trae de una vez las capas que el modo Mirar necesita. */
   const traerTerritorio = useCallback(async () => {
@@ -1089,6 +1163,13 @@ export default function App() {
               }
               onQuitar={quitar}
               onEncuadrar={encuadrar}
+              onFiltrar={(id, filtro) =>
+                setCapas((cs) =>
+                  cs.map((c) =>
+                    c.id === id ? { ...c, filtro: filtro ?? undefined } : c,
+                  ),
+                )
+              }
               base={
                 <PanelBase
                   conexiones={conexiones}

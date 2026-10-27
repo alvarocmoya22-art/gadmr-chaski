@@ -23,6 +23,7 @@
 import { ALMACEN_MESAS, conAlmacen } from "./almacen";
 import type { Paso } from "./flujo";
 import type { Capa } from "./cargar";
+import type { Filtro } from "./filtro";
 
 /** Sube cuando la forma de lo guardado cambie y lo viejo deje de servir. */
 const VERSION_FORMATO = 1;
@@ -41,6 +42,14 @@ type CapaGuardada =
       nombre: string;
       color: string;
       visible: boolean;
+      /**
+       * El filtro por tabla, que tambien es cosa del usuario.
+       *
+       * Sin guardarlo, una capa del municipio filtrada a `clase = urbano`
+       * volvia entera al recuperar la mesa y nada lo decia: los analisis
+       * pasaban a mirar las treinta y nueve piezas otra vez.
+       */
+      filtro?: Filtro;
     };
 
 export interface Mesa {
@@ -110,6 +119,7 @@ function aGuardadas(capas: Capa[]): CapaGuardada[] {
           nombre: capa.nombre,
           color: capa.color,
           visible: capa.visible,
+          filtro: capa.filtro,
         }
       : { modo: "datos" as const, capa },
   );
@@ -205,6 +215,7 @@ export async function reconstruir(
         nombre: guardada.nombre,
         color: guardada.color,
         visible: guardada.visible,
+        filtro: guardada.filtro,
       });
     } catch (e) {
       fallos.push(

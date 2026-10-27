@@ -17,6 +17,7 @@
 import shp from "shpjs";
 import type { Tema } from "./medidas";
 import { detectarFechas, type Fechas } from "./tiempo";
+import type { Filtro } from "./filtro";
 
 /** Punto, línea o polígono; una capa que mezcla formas se marca «mixta». */
 export type Forma = "punto" | "linea" | "poligono" | "mixta";
@@ -52,6 +53,15 @@ export interface Capa {
   anillo?: boolean;
   /** Los campos de la tabla, con cuántos valores distintos tiene cada uno. */
   campos: { nombre: string; distintos: number; ejemplo: string }[];
+  /**
+   * El filtro por la tabla de atributos, si tiene uno puesto.
+   *
+   * Vive en la capa y no en un panel aparte porque es una propiedad suya: se
+   * guarda con la mesa, lo ven el mapa, las herramientas y el informe, y se
+   * lee desde la misma tarjeta donde se puso. Un filtro que hay que acordarse
+   * de que esta puesto es un numero equivocado esperando su turno.
+   */
+  filtro?: Filtro;
   color: string;
   visible: boolean;
   /** Cierto si la calculó una herramienta en vez de venir de un archivo. */

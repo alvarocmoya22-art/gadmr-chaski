@@ -792,7 +792,7 @@ export interface CapasMirar {
   equipamientos: Capa | null;
 }
 
-const VACIA: GeoJSON.FeatureCollection = {
+export const VACIA: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
   features: [],
 };
@@ -1094,18 +1094,19 @@ export function recorteDe(
   capas: CapasMirar,
 ): Map<string, GeoJSON.FeatureCollection> {
   const salida = new Map<string, GeoJSON.FeatureCollection>();
-  const { plataformas, barrios } = capas;
-  const todoElCanton = a.nivel === "canton";
+  const { barrios } = capas;
 
-  if (plataformas) {
-    // Las plataformas no las dibuja la capa de datos en este modo: las pinta
-    // el mapa aparte, que es el único sitio donde se puede distinguir la
-    // elegida —relleno y contorno grueso— de las vecinas —contorno fino, para
-    // no perder la orientación—. Dejarlas también aquí las pintaría dos veces.
-    salida.set(plataformas.id, VACIA);
-  }
-
-  if (todoElCanton) return salida;
+  /*
+   * Esto dice QUE PERTENECE A LA ZONA, no qué se pinta.
+   *
+   * Antes dejaba las plataformas vacías aquí mismo, porque en el modo Mirar
+   * las pinta el mapa aparte para poder destacar la elegida. Pero eso es una
+   * decisión de dibujo, y mezclarla aquí significaba que al usar este recorte
+   * para ANALIZAR las plataformas desaparecían de la mesa. Ahora el vaciado
+   * vive donde se decide el dibujo, y esta función responde una sola
+   * pregunta.
+   */
+  if (a.nivel === "canton") return salida;
 
   /*
    * Todas las demás capas se recortan, no solo las tres del municipio.
@@ -1121,7 +1122,9 @@ export function recorteDe(
     a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
 
   for (const capa of todas) {
-    if (capa.id === plataformas?.id) continue;
+    // Las plataformas tambien se recortan. Antes se saltaban porque el mapa
+    // las pinta aparte, y asi este recorte nunca supo cuantas caen en la
+    // zona: al analizar «lo urbano» entraban las dieciocho.
     // Elegido un barrio, de la capa de barrios se deja ese y no sus vecinos:
     // por el centro pasarían también los que comparten límite.
     if (elBarrio !== null && capa.id === barrios?.id) {

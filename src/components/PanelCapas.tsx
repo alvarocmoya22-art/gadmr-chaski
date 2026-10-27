@@ -7,13 +7,20 @@
  * lleva un resultado es su ficha —las cifras, la leyenda y cómo se obtuvo—,
  * porque sin eso nadie puede defenderlo en una mesa técnica.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from "../lib/municipio";
 import type { ReactNode } from "react";
 import type { Capa } from "../lib/cargar";
 import { descargar } from "../lib/exportar";
 import { cifraLeyenda } from "../lib/medidas";
 import { numero } from "../lib/format";
+import {
+  aplicar,
+  comoFrase,
+  filtraAlgo,
+  valoresDe,
+  type Filtro,
+} from "../lib/filtro";
 
 const FORMA: Record<Capa["forma"], string> = {
   punto: "puntos",
@@ -35,6 +42,8 @@ interface Props {
   onVisible: (id: string) => void;
   onQuitar: (id: string) => void;
   onEncuadrar: (id: string) => void;
+  /** Pone o quita el filtro por tabla de una capa. `null` lo quita. */
+  onFiltrar: (id: string, filtro: Filtro | null) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -59,8 +68,11 @@ export default function PanelCapas({
   onVisible,
   onQuitar,
   onEncuadrar,
+  onFiltrar,
 }: Props) {
   const [encima, setEncima] = useState(false);
+  /** Qué tarjeta tiene abierto su panel de filtro. */
+  const [filtrando, setFiltrando] = useState("");
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   const [catalogoAbierto, setCatalogoAbierto] = useState(false);
   const [abierta, setAbierta] = useState<string | null>(null);
@@ -264,10 +276,28 @@ export default function PanelCapas({
                       {c.nombre}
                     </p>
                     <p className="text-xs text-[var(--gr-tinta-3)]">
-                      {numero(c.geo.features.length)} {FORMA[c.forma]} ·{" "}
-                      {c.campos.length}{" "}
+                      {/*
+                        Con filtro puesto se dice «14 de 39», no «14».
+                        El total es lo que deja saber que hay un recorte: un
+                        numero a secas no se distingue de una capa pequeña, y
+                        entonces el filtro se olvida y el informe sale mal.
+                      */}
+                      {filtraAlgo(c.filtro)
+                        ? `${numero(aplicar(c.geo, c.filtro).features.length)} de ${numero(c.geo.features.length)}`
+                        : numero(c.geo.features.length)}{" "}
+                      {FORMA[c.forma]} · {c.campos.length}{" "}
                       {c.campos.length === 1 ? "campo" : "campos"}
                     </p>
+                    {filtraAlgo(c.filtro) && (
+                      <p className="text-[11px] leading-snug">
+                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                          Filtrada
+                        </span>
+                        <span className="text-[var(--gr-tinta-3)]">
+                          {` · ${comoFrase(c.filtro)}`}
+                        </span>
+                      </p>
+                    )}
                     {/*
                       Que la capa trae fechas se dice aquí, sin que haya que
                       buscarlo: de eso depende que aparezca el eje temporal, y
@@ -308,6 +338,21 @@ export default function PanelCapas({
                   >
                     {fichaAbierta ? "Ocultar ficha" : "Ver ficha"}
                   </button>
+                  {/* El filtro va AQUI, en la capa, y no en un panel aparte:
+                      es una propiedad suya y se decide mirandola. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFiltrando(filtrando === c.id ? "" : c.id)
+                    }
+                    className={
+                      filtraAlgo(c.filtro)
+                        ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
+                        : "text-[var(--gr-azul-500)] hover:underline"
+                    }
+                  >
+                    {filtrando === c.id ? "Cerrar filtro" : "Filtrar"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEncuadrar(c.id)}
@@ -331,6 +376,13 @@ export default function PanelCapas({
                     Quitar
                   </button>
                 </div>
+
+                {filtrando === c.id && (
+                  <CajaFiltro
+                    capa={c}
+                    onCambio={(f) => onFiltrar(c.id, f)}
+                  />
+                )}
 
                 {fichaAbierta && (
                   <div className="mt-1.5 space-y-1.5 border-t border-[var(--gr-linea)] pt-1.5">
@@ -445,5 +497,131 @@ export default function PanelCapas({
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * El filtro de una capa: un campo y los valores que se dejan pasar.
+ *
+ * Primero el campo, despues sus valores con cuantos registros tiene cada uno.
+ * Esas cuentas son la mitad del valor de esto: antes de marcar nada ya se ve
+ * de que hay mucho y de que hay poco, que es la primera pregunta que uno le
+ * hace a una tabla que no conoce.
+ *
+ * Marcar es quedarse, no quitar. Con nada marcado no hay filtro y la capa
+ * esta entera, que es lo que uno espera al abrir una caja vacia.
+ */
+function CajaFiltro({
+  capa,
+  onCambio,
+}: {
+  capa: Capa;
+  onCambio: (f: Filtro | null) => void;
+}) {
+  const campos = capa.campos.map((x) => x.nombre);
+  /*
+   * Entra por el campo MAS filtrable, no por el primero de la tabla.
+   *
+   * El primero suele ser una superficie o un identificador: abrir el filtro
+   * de la clasificacion del suelo y encontrarse 39 valores de `area_ha`, uno
+   * por pieza, no invita a nada. El campo con menos valores distintos es casi
+   * siempre el que reparte la capa en grupos —`clase`, `tipo`, `estado`—, que
+   * es por donde se filtra de verdad.
+   *
+   * Con un solo valor no reparte nada, asi que esos van al final.
+   */
+  const porFiltrabilidad = [...capa.campos].sort((a, b) => {
+    const util = (n: number) => (n > 1 ? 0 : 1);
+    return util(a.distintos) - util(b.distintos) || a.distintos - b.distintos;
+  });
+  const [campo, setCampo] = useState(
+    capa.filtro?.campo ?? porFiltrabilidad[0]?.nombre ?? "",
+  );
+  const valores = useMemo(
+    () => (campo ? valoresDe(capa.geo, campo) : []),
+    [capa.geo, campo],
+  );
+  // Los marcados son los del filtro SOLO si es de este campo: al cambiar de
+  // campo, los valores de antes no significan nada aqui.
+  const marcados = new Set(
+    capa.filtro?.campo === campo ? capa.filtro.valores : [],
+  );
+
+  const alternar = (v: string) => {
+    const nuevos = new Set(marcados);
+    if (nuevos.has(v)) nuevos.delete(v);
+    else nuevos.add(v);
+    onCambio(nuevos.size === 0 ? null : { campo, valores: [...nuevos] });
+  };
+
+  if (campos.length === 0) {
+    return (
+      <p className="mt-1.5 text-xs text-[var(--gr-tinta-3)]">
+        Esta capa no trae tabla: no hay por donde filtrarla.
+      </p>
+    );
+  }
+
+  const quedan = marcados.size
+    ? valores.filter((v) => marcados.has(v.valor)).reduce((s, v) => s + v.n, 0)
+    : capa.geo.features.length;
+
+  return (
+    <div className="mt-1.5 space-y-1.5 rounded border border-[var(--gr-linea)] p-1.5">
+      <label className="block text-[11px] text-[var(--gr-tinta-3)]">
+        Filtrar por
+        <select
+          value={campo}
+          onChange={(e) => {
+            setCampo(e.target.value);
+            // Cambiar de campo deja la capa entera: arrastrar los valores del
+            // campo anterior filtraria por algo que ya no se esta mirando.
+            onCambio(null);
+          }}
+          className="mt-0.5 w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+        >
+          {campos.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <ul className="max-h-48 space-y-0.5 overflow-y-auto">
+        {valores.map((v) => (
+          <li key={v.valor}>
+            <label className="flex items-center gap-1.5 text-xs text-[var(--gr-tinta-2)]">
+              <input
+                type="checkbox"
+                checked={marcados.has(v.valor)}
+                onChange={() => alternar(v.valor)}
+              />
+              <span className="flex-1 truncate" title={v.valor}>
+                {v.valor}
+              </span>
+              <span className="text-[var(--gr-tinta-3)]">{numero(v.n)}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-[var(--gr-tinta-3)]">
+          {marcados.size === 0
+            ? "Sin filtro: la capa entera"
+            : `Quedan ${numero(quedan)} de ${numero(capa.geo.features.length)}`}
+        </span>
+        {marcados.size > 0 && (
+          <button
+            type="button"
+            onClick={() => onCambio(null)}
+            className="text-[var(--gr-rojo-500)] hover:underline"
+          >
+            Quitar el filtro
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
