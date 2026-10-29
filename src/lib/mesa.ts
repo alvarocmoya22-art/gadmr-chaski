@@ -50,6 +50,16 @@ type CapaGuardada =
        * pasaban a mirar las treinta y nueve piezas otra vez.
        */
       filtro?: Filtro;
+      /**
+       * Y el estilo, por el mismo motivo que el filtro.
+       *
+       * Color, grosor, opacidad y por que campo se pinta son cosa del
+       * usuario igual que el nombre: sin guardarlos, una capa que uno dejo
+       * en verde y engordada volvia de su color de fabrica al recuperar la
+       * mesa, y nada lo decia.
+       */
+      trazo?: Capa["trazo"];
+      tema?: Capa["tema"];
     };
 
 export interface Mesa {
@@ -80,6 +90,16 @@ export interface Mesa {
    * lo traen, y una mesa vieja tiene que seguir abriéndose.
    */
   pasos?: Paso[];
+  /**
+   * La capa que hacia de zona, si alguna.
+   *
+   * Se guarda el identificador y no la geometria: la zona ES una capa de la
+   * mesa, y guardarla aparte seria tener dos copias que pueden discrepar.
+   *
+   * Opcional porque las mesas guardadas antes de que existieran las zonas no
+   * lo traen, y una mesa vieja tiene que seguir abriendose.
+   */
+  zonaId?: string | null;
   /** Cuánto ocupa, para poder decirlo. */
   bytes: number;
 }
@@ -120,6 +140,8 @@ function aGuardadas(capas: Capa[]): CapaGuardada[] {
           color: capa.color,
           visible: capa.visible,
           filtro: capa.filtro,
+          trazo: capa.trazo,
+          tema: capa.tema,
         }
       : { modo: "datos" as const, capa },
   );
@@ -132,6 +154,7 @@ export async function guardar(
   mapaBase: string,
   modo: string,
   pasos: Paso[] = [],
+  zonaId: string | null = null,
 ): Promise<Mesa> {
   const guardadas = aGuardadas(capas);
   const mesa: Mesa = {
@@ -142,6 +165,7 @@ export async function guardar(
     mapaBase,
     modo,
     pasos,
+    zonaId,
     bytes: pesar(guardadas),
   };
   await conAlmacen(ALMACEN_MESAS, "readwrite", (s) => s.put(mesa));
@@ -216,6 +240,10 @@ export async function reconstruir(
         color: guardada.color,
         visible: guardada.visible,
         filtro: guardada.filtro,
+        trazo: guardada.trazo,
+        // El tema puede ser el que dejo el usuario o ninguno; si no hay, se
+        // respeta el que traiga la capa del catalogo.
+        tema: guardada.tema ?? capa.tema,
       });
     } catch (e) {
       fallos.push(

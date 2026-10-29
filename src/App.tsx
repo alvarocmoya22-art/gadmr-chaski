@@ -56,6 +56,7 @@ import {
   recorteDe,
   temaDeTipos,
   VACIA,
+  zonaDeCapa,
 } from "./lib/mirar";
 import {
   explicarFallo,
@@ -155,6 +156,15 @@ export default function App() {
   // Se empieza por todo el cantón, que es el primer escalón del filtro.
   // «urbano» sigue siendo válido: las mesas guardadas antes lo traen.
   const [ambitoElegido, setAmbitoElegido] = useState("canton");
+  /**
+   * La capa que hace de zona, si alguna.
+   *
+   * Es el reemplazo generico de la escalera de Mirar: cualquier capa de
+   * areas, filtrada como uno quiera, recorta a las demas. Manda sobre el
+   * ambito de Mirar cuando esta puesta, porque es una eleccion explicita y
+   * reciente frente a un desplegable que pudo quedarse de antes.
+   */
+  const [zonaId, setZonaId] = useState<string | null>(null);
   const [fuentePoblacion, setFuentePoblacion] = useState<string | null>(null);
   const [poblacion, setPoblacion] =
     useState<Awaited<ReturnType<typeof cargarPoblacion>>>(null);
@@ -477,13 +487,32 @@ export default function App() {
      * filtro ya quito los que no interesan.
      */
     const filtradas = capas.map(filtrada);
-    if (!ambito || ambito.nivel === "canton") return filtradas;
-    const recorte = recorteDe(ambito, filtradas, capasMirar);
+
+    /*
+     * La capa-zona manda sobre el ambito de Mirar.
+     *
+     * Es una eleccion explicita y de ahora mismo; el desplegable de Mirar
+     * pudo quedarse puesto de hace media hora. Y aplicar los dos a la vez
+     * daria un recorte que nadie pidio y que no se puede leer en ninguna
+     * parte de la pantalla.
+     */
+    const laZona = zonaId
+      ? (() => {
+          const c = filtradas.find((x) => x.id === zonaId);
+          return c ? zonaDeCapa(c) : null;
+        })()
+      : null;
+    const zona = laZona ?? ambito;
+
+    if (!zona || zona.nivel === "canton") return filtradas;
+    const recorte = recorteDe(zona, filtradas, capasMirar);
     return filtradas.map((c) => {
+      // La capa que hace de molde no se recorta contra si misma.
+      if (c.id === zonaId) return c;
       const geo = recorte.get(c.id);
       return geo ? { ...c, geo } : c;
     });
-  }, [ambito, capas, capasMirar]);
+  }, [ambito, zonaId, capas, capasMirar]);
 
   const ejecutar = useCallback(
     (
@@ -713,6 +742,15 @@ export default function App() {
     (id: string) => {
       setCapas((cs) => cs.filter((c) => c.id !== id));
       if (capaId === id) setCapaId(null);
+      /*
+       * Y si era la zona, deja de serlo.
+       *
+       * Un identificador de zona que no lleva a ninguna capa no da error: el
+       * recorte simplemente desaparece y los analisis pasan a cubrirlo todo
+       * sin que nada en pantalla lo diga. Es el mismo fallo que el de la mesa
+       * al recuperar, aqui en caliente.
+       */
+      setZonaId((z) => (z === id ? null : z));
       const limpiar = (v: Record<string, string>) =>
         Object.fromEntries(
           Object.entries(v).map(([k, x]) => [k, x === id ? "" : x]),
@@ -790,6 +828,19 @@ export default function App() {
      * aparezca sin estado obliga a volver a correrlo, que es lo correcto.
      */
     setPasos(ofrecida.pasos ?? []);
+
+    /*
+     * La zona vuelve solo si su capa volvio, y si no se DICE.
+     *
+     * La capa que hacia de zona puede no haberse podido traer del catalogo.
+     * Dejando el identificador apuntando al vacio, el recorte desaparece sin
+     * mas: los analisis pasan a mirar el territorio entero y en pantalla no
+     * hay nada que lo explique. Es el mismo fallo que ya costo una vez, y la
+     * unica diferencia es que ahora no se queja nadie.
+     */
+    const zona = ofrecida.zonaId ?? null;
+    const sigue = zona ? suyas.some((c) => c.id === zona) : true;
+    setZonaId(sigue ? zona : null);
     setMarchas([]);
     const guardado = MODOS_VIEJOS[ofrecida.modo] ?? ofrecida.modo;
     if (
@@ -803,6 +854,15 @@ export default function App() {
     if (caja) setEncuadre(caja);
     setRecados([
       { texto: `Mesa recuperada: ${numero(suyas.length)} capas.`, mal: false },
+      ...(sigue
+        ? []
+        : [
+            {
+              texto:
+                "La capa que hacía de zona no volvió, así que el recorte se quitó: lo que se analice ahora cubre todo.",
+              mal: true,
+            },
+          ]),
       ...fallos.map((f) => ({ texto: f, mal: true })),
     ]);
     setOfrecida(null);
@@ -820,7 +880,7 @@ export default function App() {
     if (ofrecida || recuperando) return;
     if (capas.length === 0) return;
     const reloj = setTimeout(() => {
-      void guardarMesa(MESA_ACTUAL, capas, mapaBase, modo, pasos)
+      void guardarMesa(MESA_ACTUAL, capas, mapaBase, modo, pasos, zonaId)
         .then(setMesaGuardada)
         .catch(() =>
           setRecados((previos) => [
@@ -833,7 +893,7 @@ export default function App() {
         );
     }, 1500);
     return () => clearTimeout(reloj);
-  }, [capas, mapaBase, modo, pasos, ofrecida, recuperando]);
+  }, [capas, mapaBase, modo, pasos, zonaId, ofrecida, recuperando]);
 
   const olvidar = useCallback(async () => {
     await olvidarMesa(MESA_ACTUAL);
@@ -1244,6 +1304,8 @@ export default function App() {
                   cs.map((c) => (c.id === id ? { ...c, trazo } : c)),
                 )
               }
+              zonaId={zonaId}
+              onZona={setZonaId}
               base={
                 <PanelBase
                   conexiones={conexiones}

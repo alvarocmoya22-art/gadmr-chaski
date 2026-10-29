@@ -52,6 +52,10 @@ interface Props {
   onColor: (id: string, color: string) => void;
   /** Cambia el grosor y la opacidad del trazo. */
   onTrazo: (id: string, trazo: { grosor: number; opacidad: number }) => void;
+  /** La capa que hace de zona ahora mismo, si alguna. */
+  zonaId: string | null;
+  /** Usa esta capa como zona, o la suelta si ya lo era. */
+  onZona: (id: string | null) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -80,6 +84,8 @@ export default function PanelCapas({
   onEstilo,
   onColor,
   onTrazo,
+  zonaId,
+  onZona,
 }: Props) {
   const [encima, setEncima] = useState(false);
   /** Qué tarjeta tiene abierto su panel de filtro. */
@@ -301,6 +307,16 @@ export default function PanelCapas({
                       {FORMA[c.forma]} · {c.campos.length}{" "}
                       {c.campos.length === 1 ? "campo" : "campos"}
                     </p>
+                    {zonaId === c.id && (
+                      <p className="text-[11px] leading-snug">
+                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                          Es la zona
+                        </span>
+                        <span className="text-[var(--gr-tinta-3)]">
+                          {" · las demás capas se recortan a ésta"}
+                        </span>
+                      </p>
+                    )}
                     {filtraAlgo(c.filtro) && (
                       <p className="text-[11px] leading-snug">
                         <span className="font-semibold text-[var(--gr-azul-500)]">
@@ -366,6 +382,22 @@ export default function PanelCapas({
                   >
                     {filtrando === c.id ? "Cerrar filtro" : "Filtrar"}
                   </button>
+                  {/* Solo las areas pueden ser molde: recortar contra una
+                      linea o un punto no deja nada dentro. */}
+                  {(c.forma === "poligono" || c.forma === "mixta") && (
+                    <button
+                      type="button"
+                      onClick={() => onZona(zonaId === c.id ? null : c.id)}
+                      className={
+                        zonaId === c.id
+                          ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
+                          : "text-[var(--gr-azul-500)] hover:underline"
+                      }
+                      title="Recorta las demas capas a esta"
+                    >
+                      {zonaId === c.id ? "Dejar de ser zona" : "Usar como zona"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPintando(pintando === c.id ? "" : c.id)}

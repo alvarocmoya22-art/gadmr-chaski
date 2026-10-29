@@ -48,7 +48,15 @@ export interface Ambito {
     | "parroquia"
     | "plataforma"
     | "cabecera"
-    | "barrio";
+    | "barrio"
+    /**
+     * Una capa cualquiera usada como zona.
+     *
+     * Es el escalon que hace generico lo que hasta ahora solo sabia hacer
+     * Mirar con las capas de Riobamba: cualquier capa de areas, filtrada como
+     * uno quiera, puede ser la zona a la que se recorta todo lo demas.
+     */
+    | "zona";
   /** Para una parroquia, de qué lado del cantón es. */
   tipo?: "urbana" | "rural";
   piezas: Anillo[][];
@@ -1232,3 +1240,29 @@ export const CAPAS_MIRAR = [
   { archivo: "barrios.geojson", nombre: "Barrios" },
   { archivo: "equipamientos.geojson", nombre: "Equipamientos" },
 ];
+
+/**
+ * Una capa de areas convertida en zona.
+ *
+ * Toma la capa TAL COMO ESTA —ya filtrada por su tabla— y la usa de molde.
+ * Con eso, «solo el suelo urbano» deja de ser un escalon escrito en el codigo
+ * y pasa a ser lo que cualquiera arma: filtrar `clase = urbano` y decir que
+ * eso es la zona.
+ *
+ * Devuelve null si la capa no deja ni un area: una zona vacia recortaria todo
+ * a nada, y eso se parece demasiado a que el programa se rompio.
+ */
+export function zonaDeCapa(capa: Capa): Ambito | null {
+  const piezas = capa.geo.features.flatMap(piezasDeRasgo);
+  if (piezas.length === 0) return null;
+  return {
+    clave: `zona:${capa.id}`,
+    titulo: capa.nombre,
+    nivel: "zona",
+    piezas,
+    caja: cajaDe(piezas.flat()),
+    pob: null,
+    viv: null,
+    ha: haDe(piezas),
+  };
+}
