@@ -37,20 +37,32 @@ export interface CapaMunicipal {
    * Las demás se leen con el mismo lector que un archivo soltado a mano.
    */
   formato?: "geojson" | "red";
+  /**
+   * Que la capa llegue con el censo pegado, y por qué lado se pega.
+   *
+   * El visor publica la población aparte, en `poblacion.json`, porque no tiene
+   * geometría propia: son cifras DE los barrios y DE las plataformas. Hasta
+   * ahora solo las leía el modo Mirar para sus tarjetas, así que la capa que
+   * uno se traía a la mesa venía sin una sola cifra de gente y no había manera
+   * de filtrarla ni de pintarla por ahí.
+   */
+  poblacion?: "barrios" | "plataformas";
 }
 
 export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "plataformas.geojson",
     nombre: "Plataformas",
-    nota: "18 plataformas del casco urbano",
+    nota: "18 plataformas del casco, con habitantes y viviendas del Censo 2022",
     peso: "37 KB",
+    poblacion: "plataformas",
   },
   {
     archivo: "barrios.geojson",
     nombre: "Barrios",
-    nota: "212 barrios urbanos",
+    nota: "212 barrios urbanos, con habitantes y viviendas del Censo 2022",
     peso: "124 KB",
+    poblacion: "barrios",
   },
   {
     archivo: "clasificacion_suelo.geojson",
@@ -106,6 +118,94 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   },
 ];
 
+/** Lo que trae el agregado de población que publica el visor. */
+export interface Poblacion {
+  fuente: string;
+  barrios: Record<string, { nombre: string; pob: number; viv: number }>;
+  plataformas: Record<string, { pob: number; viv: number }>;
+}
+
+let cache: Poblacion | null = null;
+
+/** El agregado de población, traído una sola vez. */
+export async function cargarPoblacion(): Promise<Poblacion | null> {
+  if (cache) return cache;
+  try {
+    const resp = await fetch(`${ORIGEN_VISOR}/poblacion.json`);
+    if (!resp.ok) return null;
+    cache = (await resp.json()) as Poblacion;
+    return cache;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * El dato de un barrio, que se busca por su puesto pero se confirma por su
+ * nombre.
+ *
+ * El agregado va indexado por la posición del barrio en el archivo, así que
+ * basta con que el visor publique los barrios en otro orden para que cada uno
+ * se lleve la población de su vecino, y nada en el mapa lo delataría: las
+ * cifras seguirían siendo plausibles. Por eso se compara el nombre, y si no
+ * cuadra se prefiere dejar al barrio sin cifra. Es la misma regla con la que
+ * el modo Mirar arma sus tarjetas; aquí no se afloja.
+ */
+function datoDeBarrio(
+  censo: Poblacion,
+  f: GeoJSON.Feature,
+  i: number,
+): { pob: number; viv: number } | null {
+  const dato = censo.barrios[String(i)];
+  if (!dato) return null;
+  const nombre = String(f.properties?.nombre ?? "")
+    .trim()
+    .toUpperCase();
+  return dato.nombre.trim().toUpperCase() === nombre ? dato : null;
+}
+
+/**
+ * La capa con el censo pegado a cada pieza.
+ *
+ * Tres columnas: `habitantes`, `viviendas` y `densidad_hab_km2`. La densidad
+ * no es un adorno: los barrios van de 1,7 a 33 hectáreas, y un mapa pintado
+ * por habitantes sobre piezas tan distintas dice sobre todo cuál es grande.
+ *
+ * A lo que no tiene dato no se le pone un cero: se le deja la columna vacía.
+ * Un cero es una afirmación —«aquí no vive nadie»— y lo que pasa de verdad es
+ * que el censo no lo cubre. El pintado graduado ya ignora lo vacío, así que
+ * esas piezas salen sin color en vez de salir como las más despobladas.
+ */
+function conPoblacion(
+  geo: GeoJSON.FeatureCollection,
+  lado: "barrios" | "plataformas",
+  censo: Poblacion | null,
+): GeoJSON.FeatureCollection {
+  if (!censo) return geo;
+  return {
+    ...geo,
+    features: geo.features.map((f, i) => {
+      const dato =
+        lado === "plataformas"
+          ? (censo.plataformas[String(f.properties?.clave ?? "")] ?? null)
+          : datoDeBarrio(censo, f, i);
+      if (!dato) return f;
+      const props: NonNullable<GeoJSON.GeoJsonProperties> = {
+        ...f.properties,
+        habitantes: dato.pob,
+        viviendas: dato.viv,
+      };
+      // La superficie que publica el visor, que es la que la capa ya enseña en
+      // su tabla: la densidad tiene que cuadrar con lo que se ve al lado.
+      const ha = Number(f.properties?.area_ha);
+      if (Number.isFinite(ha) && ha > 0) {
+        props.densidad_hab_km2 = Math.round((dato.pob * 100) / ha);
+      }
+      return { ...f, properties: props };
+    }),
+  };
+}
+
 /** Una arista del grafo: nodo, nodo, metros y la sarta de puntos. */
 type Arista = [number, number, number, number[][]];
 
@@ -154,7 +254,23 @@ export async function traerDelVisor(entrada: CapaMunicipal): Promise<Capa> {
     };
   }
 
-  const archivo = new File([await resp.blob()], entrada.archivo);
+  // Con censo hay que abrir el GeoJSON para pegarle las columnas y volverlo a
+  // cerrar. Si el agregado no llega, la capa entra igual pero sin ellas: que
+  // falte la población no es motivo para quedarse sin los barrios.
+  const archivo = entrada.poblacion
+    ? new File(
+        [
+          JSON.stringify(
+            conPoblacion(
+              JSON.parse(await resp.text()) as GeoJSON.FeatureCollection,
+              entrada.poblacion,
+              await cargarPoblacion(),
+            ),
+          ),
+        ],
+        entrada.archivo,
+      )
+    : new File([await resp.blob()], entrada.archivo);
   const { capa } = await leerArchivo(archivo);
   return {
     ...capa,

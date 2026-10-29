@@ -51,7 +51,6 @@ import { diagnosticar, type Informe } from "./lib/diagnostico";
 import {
   CAPAS_MIRAR,
   ambitosDe,
-  cargarPoblacion,
   leerAmbito,
   marcasDe,
   recorteDe,
@@ -78,6 +77,7 @@ import { FUENTE_EJEMPLO, cargarEjemplo, traerDelEjemplo } from "./lib/ejemplo";
 import {
   CAPAS_MUNICIPIO,
   FUENTE_MUNICIPIO,
+  cargarPoblacion,
   traerPorArchivo,
   traerVarias,
   type CapaMunicipal,

@@ -14,32 +14,10 @@ import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from "./geo";
 import { areaM2 } from "./medidas";
 import { aMulti, intersecar, planoDe, type Multi } from "./geoproceso";
 import type { Plano } from "./metrico";
-import { ORIGEN_VISOR } from "./municipio";
+import type { Poblacion } from "./municipio";
 import { numero } from "./format";
 import type { Capa, Fila } from "./cargar";
 import type { Tema } from "./medidas";
-
-/** Lo que trae el agregado de población que publica el visor. */
-interface Poblacion {
-  fuente: string;
-  barrios: Record<string, { nombre: string; pob: number; viv: number }>;
-  plataformas: Record<string, { pob: number; viv: number }>;
-}
-
-let cache: Poblacion | null = null;
-
-/** El agregado de población, traído una sola vez. */
-export async function cargarPoblacion(): Promise<Poblacion | null> {
-  if (cache) return cache;
-  try {
-    const resp = await fetch(`${ORIGEN_VISOR}/poblacion.json`);
-    if (!resp.ok) return null;
-    cache = (await resp.json()) as Poblacion;
-    return cache;
-  } catch {
-    return null;
-  }
-}
 
 /** Una zona que se puede mirar: todo el urbano, una plataforma o un barrio. */
 export interface Ambito {
