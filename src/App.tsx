@@ -511,7 +511,21 @@ export default function App() {
    * cifras del informe no pueden contradecirse.
    */
   const correrInforme = useCallback(() => {
-    const reg = capas.find((c) => c.id === ajustesInforme.registros);
+    /*
+     * Las tres capas salen de `preparadas`, no de la mesa.
+     *
+     * Las zonas ya salian de ahi, pero los registros y el limite no, y eso es
+     * un informe que se contradice solo: con una zona puesta repartia los
+     * 1.083 equipamientos del canton entre los barrios recortados, y los 24
+     * que caen fuera de la zona acababan contados en «registros fuera de toda
+     * zona», como si fuera un hallazgo. La densidad salia sobre la superficie
+     * del limite sin recortar, asi que tambien estaba mal.
+     *
+     * Acotar no sirve de nada si el informe no obedece: es justo donde un
+     * numero equivocado hace mas dano, porque sale impreso y nadie lo vuelve
+     * a mirar.
+     */
+    const reg = preparadas.find((c) => c.id === ajustesInforme.registros);
     if (!reg) return;
     setCalculando(true);
     setError(null);
@@ -524,7 +538,7 @@ export default function App() {
         return;
       }
       const capaAmbito =
-        capas.find((c) => c.id === ajustesInforme.ambito) ?? null;
+        preparadas.find((c) => c.id === ajustesInforme.ambito) ?? null;
       const piezas = capaAmbito ? piezasDe(capaAmbito) : recuadroDe(puntos);
       if (piezas.length === 0) {
         setError(
