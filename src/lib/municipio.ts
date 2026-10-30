@@ -65,10 +65,17 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
     poblacion: "barrios",
   },
   {
+    archivo: "manzanas.geojson",
+    nombre: "Manzanas",
+    nota: "3.757 manzanas del INEC, con habitantes y viviendas del Censo 2022",
+    peso: "2 MB",
+    pesada: true,
+  },
+  {
     archivo: "clasificacion_suelo.geojson",
     nombre: "Clasificación del suelo",
-    nota: "Lo urbano y lo rural del cantón, el reparto oficial",
-    peso: "234 KB",
+    nota: "Lo urbano y lo rural del cantón, con habitantes y viviendas",
+    peso: "255 KB",
   },
   {
     archivo: "limite_urbano.geojson",
@@ -79,8 +86,8 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "parroquias_canton.geojson",
     nombre: "Parroquias",
-    nota: "17: las 5 urbanas, las 11 rurales y el área rural de Riobamba",
-    peso: "207 KB",
+    nota: "17 del cantón, con habitantes y viviendas del Censo 2022",
+    peso: "225 KB",
   },
   {
     archivo: "equipamientos.geojson",
