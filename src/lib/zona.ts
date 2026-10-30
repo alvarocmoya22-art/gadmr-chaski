@@ -1,102 +1,44 @@
 /**
- * El modo Mirar: el territorio de casa, sin herramientas a la vista.
+ * La zona: recortar la mesa a una capa de areas.
  *
- * Quien entra a mirar no quiere una caja de dieciséis herramientas: quiere
- * ver su ciudad, elegir una plataforma o un barrio y saber qué hay dentro.
- * Esa es la diferencia entre los dos primeros modos, y es la razón de que la
- * aplicación unida tenga tres puertas en vez de una pantalla con todo.
+ * Acotar es la mitad de preparar. Analizar sobre todo el canton cuando la
+ * pregunta es de un barrio no da un numero aproximado: da otro numero, y uno
+ * que no se queja. Aqui vive lo que contesta **que pertenece a la zona**, que
+ * es una pregunta de geometria y no de territorio: no sabe de parroquias ni
+ * de plataformas, solo de poligonos. Por eso vale igual para un shapefile que
+ * alguien suelte que para una tabla de PostGIS.
  *
- * Las cifras salen de las mismas capas que publica el visor, más el agregado
- * de población del Censo 2022 que también publica. Aquí no se recalcula nada
- * que el visor ya haya calculado: se lee lo suyo y se mide lo que haga falta.
+ * Lo caro es cortar poligonos, asi que casi todo el archivo es evitarlo: una
+ * reja sobre el contorno para descartar de un vistazo lo que esta claramente
+ * dentro o claramente fuera, y un troceado por niveles para que lo que si hay
+ * que cortar se corte contra un pedazo de la zona y no contra la zona entera.
+ * Esa es la diferencia entre medio segundo y ocho minutos y medio.
  */
 import { cajaDe, enPoligono, poligonosDe, type Anillo, type Caja } from "./geo";
 import { areaM2 } from "./medidas";
 import { aMulti, intersecar, planoDe, type Multi } from "./geoproceso";
 import type { Plano } from "./metrico";
-import type { Poblacion } from "./municipio";
-import { numero } from "./format";
-import type { Capa, Fila } from "./cargar";
+import type { Capa } from "./cargar";
 import type { Tema } from "./medidas";
 
-/** Una zona que se puede mirar: todo el urbano, una plataforma o un barrio. */
-export interface Ambito {
+/**
+ * Una zona: las areas de una capa, tomadas como molde.
+ *
+ * Se arma de la capa YA FILTRADA, no de la capa entera: filtrar y acotar son
+ * el mismo gesto en dos pasos —«de los barrios, estos ocho»— y separarlos
+ * daria un recorte que no es el que se ve en la tarjeta.
+ */
+export interface Zona {
   clave: string;
   titulo: string;
-  /** De qué capa salió, para saber a qué nivel está. */
-  /**
-   * A qué altura de la división está.
-   *
-   * De lo macro a lo pequeño: el cantón entero, su mitad urbana o rural, una
-   * parroquia, una plataforma, un barrio. Las plataformas y los barrios solo
-   * existen en el casco, así que por la rama rural la escalera se acaba en la
-   * parroquia; el panel lo dice en vez de ofrecer listas vacías.
-   */
-  /**
-   * A qué altura de la división está.
-   *
-   * De lo macro a lo pequeño. En la rama urbana: cantón, urbano, parroquia
-   * urbana, plataforma, barrio. En la rural: cantón, rural, parroquia rural y
-   * su CABECERA, que es lo urbano que hay dentro y ocupa el mismo escalón que
-   * la plataforma. Antes la rama rural se acababa en la parroquia y la parte
-   * donde vive la gente no se podía mirar sola.
-   */
-  nivel:
-    | "canton"
-    | "urbano"
-    | "rural"
-    | "parroquia"
-    | "plataforma"
-    | "cabecera"
-    | "barrio"
-    /**
-     * Una capa cualquiera usada como zona.
-     *
-     * Es el escalon que hace generico lo que hasta ahora solo sabia hacer
-     * Mirar con las capas de Riobamba: cualquier capa de areas, filtrada como
-     * uno quiera, puede ser la zona a la que se recorta todo lo demas.
-     */
-    | "zona";
-  /** Para una parroquia, de qué lado del cantón es. */
-  tipo?: "urbana" | "rural";
   piezas: Anillo[][];
   caja: Caja;
-  pob: number | null;
-  viv: number | null;
   /** Superficie medida sobre el elipsoide, no la declarada en el shapefile. */
   ha: number;
-  /**
-   * El ámbito que lo contiene, un nivel por encima.
-   *
-   * Un barrio cuelga de su plataforma, una plataforma de su parroquia. Es lo
-   * que permite que los desplegables se encadenen —«los 24 de la plataforma
-   * C»— en vez de enseñar los 212 barrios de la ciudad seguidos. Lo que caiga
-   * fuera de todo se queda sin padre: no inventarle uno es mejor que colgarlo
-   * de la vecina.
-   *
-   * Es lo que permite que el desplegable de barrios enseñe «los 24 de la
-   * plataforma C» en vez de los 212 de la ciudad seguidos. Los barrios que
-   * caen fuera de toda plataforma se quedan sin padre y solo aparecen con el
-   * ámbito urbano: no inventarles una es mejor que colgarlos de la vecina.
-   */
-  padre?: string;
-  /**
-   * La parroquia de un barrio, decidida por SU centro y no por la de su
-   * plataforma.
-   *
-   * Parece lo mismo y no lo es: cinco barrios de Lizarzaburu cuelgan de una
-   * plataforma que pertenece a otra parroquia. Yendo por la plataforma, el
-   * desplegable ofrecía 102 barrios mientras la cifra de al lado decía 107.
-   * Dos números para la misma pregunta, y ninguno explicaba al otro.
-   */
-  abuelo?: string;
 }
 
 const piezasDeRasgo = (f: GeoJSON.Feature): Anillo[][] =>
   f.geometry ? poligonosDe(f.geometry) : [];
-
-const texto = (v: unknown): string =>
-  v === null || v === undefined ? "" : String(v);
 
 /** Las hectáreas de un conjunto de piezas, sobre el elipsoide. */
 const haDe = (piezas: Anillo[][]): number =>
@@ -106,310 +48,6 @@ const haDe = (piezas: Anillo[][]): number =>
       areaM2({ type: "Polygon", coordinates: poly as number[][][] }) / 10000,
     0,
   );
-
-/**
- * Los ámbitos que se pueden elegir, a partir de las capas cargadas.
- *
- * La población de las plataformas se une por su clave, que es estable. La de
- * los barrios viene indexada por su posición en la capa, que es frágil, así
- * que **solo se usa cuando el nombre también coincide**: si la capa cambió de
- * orden, se prefiere no decir una población a decir la del barrio de al lado.
- */
-export function ambitosDe(
-  parroquias: Capa | null,
-  limiteUrbano: Capa | null,
-  clasificacion: Capa | null,
-  plataformas: Capa | null,
-  barrios: Capa | null,
-  poblacion: Poblacion | null,
-): Ambito[] {
-  const salida: Ambito[] = [];
-
-  /*
-   * Las parroquias, el nivel de arriba.
-   *
-   * Van primero porque las plataformas necesitan saber de cuál cuelgan, y eso
-   * se decide buscándolas entre las que ya están en la lista.
-   *
-   * Su población y sus viviendas se suman de las plataformas que contienen y
-   * no se leen de ningún agregado propio: el censo que se publica viene por
-   * plataforma y por barrio, y repartir al revés —de la parroquia hacia
-   * abajo— sería inventarse un reparto.
-   */
-  if (parroquias) {
-    const urbanas: Anillo[][] = [];
-    const rurales: Anillo[][] = [];
-    parroquias.geo.features.forEach((f, i) => {
-      const piezas = piezasDeRasgo(f);
-      if (piezas.length === 0) return;
-      const nombre = texto(f.properties?.nombre) || `Parroquia ${i + 1}`;
-      // La capa publicada trae el tipo; sin él se asume rural, que es lo que
-      // más hay, y el panel lo enseñará donde toca aunque no sea exacto.
-      const tipo = texto(f.properties?.tipo) === "urbana" ? "urbana" : "rural";
-      (tipo === "urbana" ? urbanas : rurales).push(...piezas);
-      salida.push({
-        clave: `parroquia:${texto(f.properties?.clave) || i}`,
-        titulo: nombre,
-        nivel: "parroquia",
-        tipo,
-        piezas,
-        caja: cajaDe(piezas.flat()),
-        pob: null,
-        viv: null,
-        ha: haDe(piezas),
-      });
-    });
-
-    /*
-     * El cantón entero y su mitad rural.
-     *
-     * Son el primer escalón del filtro: antes de preguntar por una parroquia
-     * hay que decir si se mira el casco o el campo, que es lo que separa de
-     * verdad este territorio. La mitad urbana se arma abajo, con las
-     * plataformas, porque ahí es donde está su población.
-     */
-    /*
-     * El cantón, solo si no hay clasificación.
-     *
-     * Con ella, el cantón se arma abajo sumando sus dos clases, y así las
-     * tres cifras del primer desplegable cuadran entre sí. Armándolo aquí
-     * salía de las parroquias y las otras dos de la clasificación: dos capas
-     * distintas, cinco hectáreas de diferencia y ninguna explicación.
-     */
-    const todas = [...urbanas, ...rurales];
-    if (!clasificacion && todas.length > 0) {
-      salida.push({
-        clave: "canton",
-        titulo: "Todo el cantón",
-        nivel: "canton",
-        piezas: todas,
-        caja: cajaDe(todas.flat()),
-        // El censo que se publica viene por plataforma y por barrio, es decir
-        // solo del casco: poner esa cifra aquí daría la población urbana por
-        // la del cantón.
-        pob: null,
-        viv: null,
-        ha: haDe(todas),
-      });
-    }
-  }
-
-  /*
-   * Urbano y rural, del reparto oficial del suelo.
-   *
-   * NO de las parroquias. Lo urbano del cantón no es solo la ciudad: son
-   * 3.095 ha de casco más trece cabeceras de parroquias rurales que suman
-   * 461. Tomando «urbano» como las cinco parroquias urbanas, esos manchones
-   * —Licán 98 ha, los tres núcleos de San Luis, Cubijíes, Licto…— quedaban
-   * contados como campo, y son suelo urbano igual que el centro.
-   *
-   * Las dos clases reparten el cantón sin solaparse: 96.316 y 3.555 ha.
-   */
-  if (clasificacion) {
-    const porClase = (cual: string) =>
-      clasificacion.geo.features
-        .filter((f) => texto(f.properties?.clase).toLowerCase() === cual)
-        .flatMap(piezasDeRasgo);
-
-    const loUrbano = porClase("urbano");
-    const loRural = porClase("rural");
-
-    const todoElSuelo = [...loUrbano, ...loRural];
-    if (todoElSuelo.length > 0) {
-      salida.push({
-        clave: "canton",
-        titulo: "Todo el cantón",
-        nivel: "canton",
-        piezas: todoElSuelo,
-        caja: cajaDe(todoElSuelo.flat()),
-        // El censo publicado es por plataforma y por barrio, o sea solo del
-        // casco: ponerlo aquí daría la población urbana por la del cantón.
-        pob: null,
-        viv: null,
-        ha: haDe(todoElSuelo),
-      });
-    }
-
-    if (loUrbano.length > 0) {
-      salida.push({
-        clave: "urbano",
-        titulo: "Urbano",
-        nivel: "urbano",
-        piezas: loUrbano,
-        caja: cajaDe(loUrbano.flat()),
-        // El censo publicado viene por plataforma, que cubre el casco. Las
-        // cabeceras no traen el suyo, así que esta cifra es la del casco y
-        // se queda corta por lo que vive en ellas.
-        pob: poblacion
-          ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.pob, 0)
-          : null,
-        viv: poblacion
-          ? Object.values(poblacion.plataformas).reduce((s, p) => s + p.viv, 0)
-          : null,
-        ha: haDe(loUrbano),
-      });
-    }
-    if (loRural.length > 0) {
-      salida.push({
-        clave: "rural",
-        titulo: "Rural",
-        nivel: "rural",
-        piezas: loRural,
-        caja: cajaDe(loRural.flat()),
-        pob: null,
-        viv: null,
-        ha: haDe(loRural),
-      });
-    }
-  }
-
-  /*
-   * Las cabeceras urbanas de las parroquias rurales.
-   *
-   * Van después de las parroquias porque cuelgan de ellas, y antes que las
-   * plataformas porque ocupan su mismo escalón: lo urbano de dentro. La
-   * pieza de la ciudad —«ciudad» en la capa— no entra aquí: esa es el casco
-   * entero y ya la representan las plataformas.
-   */
-  if (limiteUrbano) {
-    const parroquiasDe = salida.filter((a) => a.nivel === "parroquia");
-    limiteUrbano.geo.features.forEach((f, i) => {
-      if (texto(f.properties?.clase) !== "cabecera") return;
-      const piezas = piezasDeRasgo(f);
-      if (piezas.length === 0) return;
-      const donde = texto(f.properties?.parroquia);
-      const padre = padreDe(f, parroquiasDe);
-      salida.push({
-        clave: `cabecera:${i}`,
-        // Hay parroquias con más de un núcleo —San Luis tiene tres—, así que
-        // el nombre solo no distingue: se añade su superficie al elegirlas.
-        titulo: donde ? `Cabecera de ${donde}` : `Cabecera ${i + 1}`,
-        nivel: "cabecera",
-        piezas,
-        caja: cajaDe(piezas.flat()),
-        pob: null,
-        viv: null,
-        ha: haDe(piezas),
-        padre,
-      });
-    });
-  }
-
-  if (plataformas) {
-    plataformas.geo.features.forEach((f) => {
-      const piezas = piezasDeRasgo(f);
-      if (piezas.length === 0) return;
-      const clave = texto(f.properties?.clave);
-      const dato = poblacion?.plataformas[clave] ?? null;
-      // De qué parroquia es, por su centro. Está comprobado contra los datos
-      // publicados: las 18 caen dentro de una de las cinco, ninguna huérfana.
-      const padre = padreDe(
-        f,
-        salida.filter((a) => a.nivel === "parroquia"),
-      );
-      salida.push({
-        clave: `plataforma:${clave}`,
-        titulo: `Plataforma ${clave}`,
-        nivel: "plataforma",
-        piezas,
-        caja: cajaDe(piezas.flat()),
-        pob: dato?.pob ?? null,
-        viv: dato?.viv ?? null,
-        ha: haDe(piezas),
-        padre,
-      });
-    });
-  }
-
-  if (barrios) {
-    barrios.geo.features.forEach((f, i) => {
-      const piezas = piezasDeRasgo(f);
-      if (piezas.length === 0) return;
-      const nombre = texto(f.properties?.nombre) || `Barrio ${i + 1}`;
-      const dato = poblacion?.barrios[String(i)] ?? null;
-      // Solo se cree el dato si el nombre cuadra: el índice por sí solo no basta.
-      const cuadra =
-        dato &&
-        dato.nombre.trim().toUpperCase() === nombre.trim().toUpperCase();
-      // De qué plataforma es, por su centro: el mismo criterio con el que se
-      // cuentan los barrios de una plataforma en las cifras.
-      const padre = padreDe(
-        f,
-        salida.filter((a) => a.nivel === "plataforma"),
-      );
-      // Y su parroquia por sí mismo, no por la de su plataforma: cinco
-      // barrios de Lizarzaburu cuelgan de una plataforma de otra parroquia.
-      const abuelo = padreDe(
-        f,
-        salida.filter((a) => a.nivel === "parroquia"),
-      );
-      salida.push({
-        clave: `barrio:${i}`,
-        titulo: nombre,
-        nivel: "barrio",
-        piezas,
-        caja: cajaDe(piezas.flat()),
-        pob: cuadra ? dato.pob : null,
-        viv: cuadra ? dato.viv : null,
-        ha: haDe(piezas),
-        padre,
-        abuelo,
-      });
-    });
-  }
-
-  return salida;
-}
-
-/**
- * A qué ámbito pertenece un rasgo, de entre los candidatos.
- *
- * Primero por su centro, que es lo correcto casi siempre. Y si ese centro no
- * cae en ninguno —pasa con las formas cóncavas, donde la media de los
- * vértices se sale de la propia pieza—, vale con que caiga uno de sus
- * vértices: sin ese resguardo, Yaruquíes se quedaba con cero plataformas y
- * tres barrios no pertenecían a ninguna parroquia.
- */
-function padreDe(f: GeoJSON.Feature, candidatos: Ambito[]): string | undefined {
-  const g = f.geometry;
-  if (!g || candidatos.length === 0) return undefined;
-
-  /*
-   * Gana el que se queda con MÁS superficie del rasgo.
-   *
-   * Es la única regla que resiste. Por el centro se pierden las formas
-   * cóncavas, donde la media de los vértices se sale de la propia pieza. Por
-   * el primer vértice que acierte gana tantas veces el vecino como el dueño,
-   * porque el límite es común. Y contando vértices gana el lado que esté más
-   * finamente dibujado: con esa regla, la plataforma N —68 % de Yaruquíes y
-   * 16 % de Veloz— acababa contada en Veloz.
-   *
-   * Se mide con las mismas herramientas que los geoprocesos, en un plano
-   * métrico local, así que no hace falta nada nuevo.
-   */
-  const caja = cajaDe(piezasDeRasgo(f).flat());
-  const plano = planoDe([g, ...candidatos.map(comoArea)]);
-  const mio = aMulti(g);
-
-  let mejor: string | undefined;
-  let mayor = 0;
-  for (const a of candidatos) {
-    // Descarte por caja: lo caro es cortar polígonos y casi ninguno se toca.
-    const [o, s, e, n] = a.caja;
-    if (caja[2] < o || caja[0] > e || caja[3] < s || caja[1] > n) continue;
-    const trozos = intersecar(mio, aMulti(comoArea(a)), plano) ?? [];
-    const area = trozos.reduce(
-      (acc, poly) =>
-        acc + areaM2({ type: "Polygon", coordinates: poly as number[][][] }),
-      0,
-    );
-    if (area > mayor) {
-      mejor = a.clave;
-      mayor = area;
-    }
-  }
-  return mejor;
-}
 
 /** El centro de un área: la media de los vértices de su anillo mayor. */
 function centroDeRasgo(f: GeoJSON.Feature): [number, number] | null {
@@ -427,7 +65,7 @@ function centroDeRasgo(f: GeoJSON.Feature): [number, number] | null {
 }
 
 /** Cierto si el punto cae en el ámbito. */
-const dentro = (a: Ambito, lon: number, lat: number) => {
+const dentro = (a: Zona, lon: number, lat: number) => {
   // Por la caja de cada pieza antes de recorrer sus esquinas: lo rural son
   // veinticinco piezas y 8.343 esquinas, y un punto cae como mucho en una.
   const { cajas } = rejaDe(a);
@@ -498,12 +136,12 @@ interface Reja {
  * En un mapa débil para que se vaya con el ámbito: al recargar las capas los
  * ámbitos son otros objetos y las rejas viejas sobran.
  */
-const rejas = new WeakMap<Ambito, Reja>();
+const rejas = new WeakMap<Zona, Reja>();
 
 /** Celdas a lo ancho. En lo rural, unos doscientos metros cada una. */
 const CELDAS = 256;
 
-function rejaDe(a: Ambito): Reja {
+function rejaDe(a: Zona): Reja {
   const hecha = rejas.get(a);
   if (hecha) return hecha;
 
@@ -555,7 +193,7 @@ function rejaDe(a: Ambito): Reja {
  * falta: ahí tampoco hay contorno, y son terreno de fuera.
  */
 function rozaElContorno(
-  a: Ambito,
+  a: Zona,
   oeste: number,
   sur: number,
   este: number,
@@ -597,7 +235,7 @@ const NIVEL_TROZO = 5;
  *
  * Solo se calculan los cuadros por los que alguien pregunta, y se guardan.
  */
-function trozoDe(a: Ambito, nivel: number, cx: number, cy: number): Multi {
+function trozoDe(a: Zona, nivel: number, cx: number, cy: number): Multi {
   const r = rejaDe(a);
   if (nivel === 0) return r.entero;
 
@@ -645,7 +283,7 @@ function trozoDe(a: Ambito, nivel: number, cx: number, cy: number): Multi {
  * solo para medir.
  */
 function ambitoCerca(
-  a: Ambito,
+  a: Zona,
   oeste: number,
   sur: number,
   este: number,
@@ -676,97 +314,6 @@ function ambitoCerca(
  * «Equipamientos por cada mil habitantes» es la que de verdad se discute en
  * una mesa: el número a secas premia siempre a la plataforma más grande.
  */
-export function leerAmbito(
-  a: Ambito,
-  equipamientos: Capa | null,
-  ambitos: Ambito[],
-): { cifras: Fila[]; tipos: Fila[] } {
-  const ha = a.ha;
-
-  const cifras: Fila[] = [
-    { etiqueta: "Superficie", valor: `${numero(Math.round(ha))} ha` },
-  ];
-  if (a.pob !== null) {
-    cifras.push({ etiqueta: "Habitantes", valor: numero(a.pob) });
-    const km2 = ha / 100;
-    if (km2 > 0) {
-      cifras.push({
-        etiqueta: "Densidad",
-        valor: `${numero(Math.round(a.pob / km2))} hab/km²`,
-      });
-    }
-  }
-  if (a.viv !== null)
-    cifras.push({ etiqueta: "Viviendas", valor: numero(a.viv) });
-
-  /*
-   * Los barrios se cuentan de la lista de ámbitos, no volviendo a mirar la
-   * capa.
-   *
-   * Así la cifra y el desplegable no pueden discrepar: son el mismo reparto.
-   * Cuando eran dos cuentas separadas, el desplegable ofrecía 102 barrios de
-   * Lizarzaburu y la cifra de al lado decía 107, y ninguno de los dos números
-   * explicaba al otro.
-   */
-  /*
-   * Los barrios de la zona.
-   *
-   * Todos son del casco, así que el cantón y lo urbano los tienen todos; una
-   * parroquia o una plataforma, los que cuelguen de ella. Por la rama rural
-   * no hay ninguno, y ahí la fila NO se pone: un «Barrios 0» junto a una
-   * parroquia de 27.900 ha se lee como que algo falló al contar, no como que
-   * los barrios son cosa del casco.
-   */
-  const puedeTenerBarrios =
-    a.nivel === "canton" ||
-    a.nivel === "urbano" ||
-    a.nivel === "plataforma" ||
-    (a.nivel === "parroquia" && a.tipo === "urbana");
-
-  if (puedeTenerBarrios) {
-    const todos = a.nivel === "canton" || a.nivel === "urbano";
-    const cuantos = ambitos.filter(
-      (x) =>
-        x.nivel === "barrio" &&
-        (todos || x.padre === a.clave || x.abuelo === a.clave),
-    ).length;
-    cifras.push({ etiqueta: "Barrios", valor: numero(cuantos) });
-  }
-
-  const tipos: Fila[] = [];
-  if (equipamientos) {
-    const cuenta = new Map<string, number>();
-    let total = 0;
-    for (const f of equipamientos.geo.features) {
-      const g = f.geometry;
-      if (!g || g.type !== "Point") continue;
-      const [lon, lat] = g.coordinates as [number, number];
-      if (!dentro(a, lon, lat)) continue;
-      total++;
-      const tipo = texto(f.properties?.tipo) || "—";
-      cuenta.set(tipo, (cuenta.get(tipo) ?? 0) + 1);
-    }
-    cifras.push({ etiqueta: "Equipamientos", valor: numero(total) });
-    if (a.pob !== null && a.pob > 0) {
-      cifras.push({
-        etiqueta: "Por cada 1.000 hab",
-        valor: ((total / a.pob) * 1000).toFixed(1).replace(".", ","),
-      });
-    }
-    for (const [tipo, n] of [...cuenta.entries()]
-      .sort((x, y) => y[1] - x[1])
-      .slice(0, 6)) {
-      tipos.push({
-        etiqueta: tipo,
-        valor: `${numero(n)} · ${((n / Math.max(1, total)) * 100).toFixed(0)} %`,
-      });
-    }
-  }
-
-  return { cifras, tipos };
-}
-
-/** Las tres capas de Mirar, cada una con la que toca. */
 export interface CapasMirar {
   parroquias: Capa | null;
   /** El límite urbano: la ciudad y las trece cabeceras parroquiales. */
@@ -876,7 +423,7 @@ function seCruzan(
  * Solo llegan aquí los rasgos que ya pasaron el descarte por caja y fallaron
  * las pruebas baratas, que son pocos.
  */
-function cortaElBorde(g: GeoJSON.Geometry, a: Ambito): boolean {
+function cortaElBorde(g: GeoJSON.Geometry, a: Zona): boolean {
   const suyas = cadenasDe(g);
   if (suyas.length === 0) return false;
   for (const cadena of suyas) {
@@ -902,7 +449,7 @@ function cortaElBorde(g: GeoJSON.Geometry, a: Ambito): boolean {
   return false;
 }
 
-function perteneceA(a: Ambito, f: GeoJSON.Feature): boolean {
+function perteneceA(a: Zona, f: GeoJSON.Feature): boolean {
   const g = f.geometry;
   if (!g || g.type === "GeometryCollection") return false;
 
@@ -1055,7 +602,7 @@ const PARTE_MINIMA = 0.01;
 const SOLAPE_MINIMO_M2 = 100;
 
 /** Un ámbito como geometría, para las operaciones entre polígonos. */
-const comoArea = (a: Ambito): GeoJSON.Geometry => ({
+const comoArea = (a: Zona): GeoJSON.Geometry => ({
   type: "MultiPolygon",
   coordinates: a.piezas as number[][][][],
 });
@@ -1075,12 +622,10 @@ const comoArea = (a: Ambito): GeoJSON.Geometry => ({
  * enseña. Al volver a «Riobamba urbano» reaparece todo sin recargar nada.
  */
 export function recorteDe(
-  a: Ambito,
+  a: Zona,
   todas: Capa[],
-  capas: CapasMirar,
 ): Map<string, GeoJSON.FeatureCollection> {
   const salida = new Map<string, GeoJSON.FeatureCollection>();
-  const { barrios } = capas;
 
   /*
    * Esto dice QUE PERTENECE A LA ZONA, no qué se pinta.
@@ -1092,8 +637,6 @@ export function recorteDe(
    * vive donde se decide el dibujo, y esta función responde una sola
    * pregunta.
    */
-  if (a.nivel === "canton") return salida;
-
   /*
    * Todas las demás capas se recortan, no solo las tres del municipio.
    *
@@ -1104,22 +647,7 @@ export function recorteDe(
    * tabla de PostGIS o el resultado de una herramienta—, porque todas se
    * miran igual.
    */
-  const elBarrio =
-    a.nivel === "barrio" ? Number(a.clave.slice("barrio:".length)) : null;
-
   for (const capa of todas) {
-    // Las plataformas tambien se recortan. Antes se saltaban porque el mapa
-    // las pinta aparte, y asi este recorte nunca supo cuantas caen en la
-    // zona: al analizar «lo urbano» entraban las dieciocho.
-    // Elegido un barrio, de la capa de barrios se deja ese y no sus vecinos:
-    // por el centro pasarían también los que comparten límite.
-    if (elBarrio !== null && capa.id === barrios?.id) {
-      salida.set(
-        capa.id,
-        soloCon(capa, (_f, i) => i === elBarrio),
-      );
-      continue;
-    }
     salida.set(
       capa.id,
       soloCon(capa, (f) => perteneceA(a, f)),
@@ -1130,66 +658,6 @@ export function recorteDe(
 }
 
 /** La letra de una plataforma, puesta en el mapa. */
-export interface Marca {
-  clave: string;
-  letra: string;
-  /** Lo que se lee al pasar por encima. */
-  titulo: string;
-  lon: number;
-  lat: number;
-}
-
-/**
- * Dónde va la letra de cada plataforma.
- *
- * Como marcador de HTML y no como rótulo del estilo: poner texto en el mapa
- * obliga a servir una fuente de glifos entera, y aquí son dieciocho letras.
- *
- * El punto es el centro de la pieza más grande. En una plataforma con forma de
- * ele el centro puede caer fuera del polígono; se acepta, porque la letra es
- * una referencia para orientarse y no una afirmación sobre la geometría.
- */
-export function marcasDe(ambitos: Ambito[]): Marca[] {
-  const salida: Marca[] = [];
-  for (const a of ambitos) {
-    if (a.nivel !== "plataforma") continue;
-    const mayor = a.piezas.reduce(
-      (mejor, p) => (p[0].length > (mejor?.[0].length ?? 0) ? p : mejor),
-      a.piezas[0],
-    );
-    const anillo = mayor?.[0];
-    if (!anillo?.length) continue;
-    const n = anillo.length - 1;
-    if (n <= 0) continue;
-    let x = 0;
-    let y = 0;
-    for (let i = 0; i < n; i++) {
-      x += anillo[i][0];
-      y += anillo[i][1];
-    }
-    salida.push({
-      clave: a.clave,
-      letra: a.clave.slice("plataforma:".length),
-      titulo: `${a.titulo} · ${Math.round(a.ha)} ha`,
-      lon: x / n,
-      lat: y / n,
-    });
-  }
-  return salida;
-}
-
-/**
- * El color de cada tipo de equipamiento.
- *
- * Fijo y escrito a mano, no repartido por orden de aparición. Dos mapas de dos
- * plataformas distintas tienen que poder ponerse uno al lado del otro, y si el
- * color se asignara según los tipos que aparecen en cada zona, «Salud» sería
- * rojo en uno y verde en el otro.
- *
- * Son los doce tipos del inventario municipal. Lo que no esté en la lista cae
- * en el gris de «otros», que es más honesto que colarlo en un color con
- * significado.
- */
 export const COLOR_TIPO: Record<string, string> = {
   Educación: "#2c6fb5",
   Salud: "#c0453b",
@@ -1224,45 +692,14 @@ export const temaDeTipos = (): Tema => ({
 });
 
 /** Las capas que el modo Mirar necesita tener cargadas. */
-export const CAPAS_MIRAR = [
-  /*
-   * Las parroquias primero: son el nivel de arriba del filtro.
-   *
-   * Se usa `parroquias_canton`, que son las diecisiete —cinco urbanas, once
-   * rurales y el área rural de la propia parroquia Riobamba—, y no
-   * `parroquias.geojson`, que solo trae las cinco urbanas y dejaría fuera del
-   * filtro todo lo que no sea casco.
-   */
-  { archivo: "parroquias_canton.geojson", nombre: "Parroquias" },
-  { archivo: "limite_urbano.geojson", nombre: "Límite urbano" },
-  { archivo: "clasificacion_suelo.geojson", nombre: "Clasificación del suelo" },
-  { archivo: "plataformas.geojson", nombre: "Plataformas" },
-  { archivo: "barrios.geojson", nombre: "Barrios" },
-  { archivo: "equipamientos.geojson", nombre: "Equipamientos" },
-];
-
-/**
- * Una capa de areas convertida en zona.
- *
- * Toma la capa TAL COMO ESTA —ya filtrada por su tabla— y la usa de molde.
- * Con eso, «solo el suelo urbano» deja de ser un escalon escrito en el codigo
- * y pasa a ser lo que cualquiera arma: filtrar `clase = urbano` y decir que
- * eso es la zona.
- *
- * Devuelve null si la capa no deja ni un area: una zona vacia recortaria todo
- * a nada, y eso se parece demasiado a que el programa se rompio.
- */
-export function zonaDeCapa(capa: Capa): Ambito | null {
+export function zonaDeCapa(capa: Capa): Zona | null {
   const piezas = capa.geo.features.flatMap(piezasDeRasgo);
   if (piezas.length === 0) return null;
   return {
     clave: `zona:${capa.id}`,
     titulo: capa.nombre,
-    nivel: "zona",
     piezas,
     caja: cajaDe(piezas.flat()),
-    pob: null,
-    viv: null,
     ha: haDe(piezas),
   };
 }

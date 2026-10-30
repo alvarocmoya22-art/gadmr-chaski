@@ -25,7 +25,6 @@ import {
 } from "../config/mapasBase";
 import type { Capa } from "../lib/cargar";
 import type { PuntoAnalisis } from "../lib/ambito";
-import type { Marca } from "../lib/mirar";
 
 /** Riobamba, que es para donde se hace esto. */
 const CENTRO: [number, number] = [-78.6483, -1.6635];
@@ -37,38 +36,12 @@ interface Props {
   puntos: PuntoAnalisis[];
   /** El ámbito que se usó, dibujado como contorno. */
   ambito: GeoJSON.FeatureCollection | null;
-  /** Las plataformas de fondo en el modo Mirar, con la elegida destacada. */
-  referencia?: Referencia | null;
   mapaBase: string;
   onMapaBase: (clave: string) => void;
   /** Encuadrar aquí cuando entra una capa nueva. */
   encuadre: [number, number, number, number] | null;
   /** Se rellena con la función que saca la foto de la vista, para la lámina. */
   capturaRef?: { current: (() => Promise<Captura | null>) | null };
-}
-
-/**
- * Las plataformas como telón de fondo del modo Mirar.
- *
- * No son una capa de datos más: la elegida tiene que leerse de un vistazo y
- * las otras diecisiete tienen que seguir ahí. Si se esconden, uno ve un
- * polígono suelto sobre el mapa base y no sabe qué parte de la ciudad está
- * mirando; si se dibujan todas igual, no se distingue cuál eligió.
- */
-export interface Referencia {
-  geo: GeoJSON.FeatureCollection;
-  /** La clave de la elegida (`plataforma:C`), o null en el ámbito urbano. */
-  activa: string | null;
-  marcas: Marca[];
-  /**
-   * El estilo de la capa de plataformas, para que el telón lo obedezca.
-   *
-   * El telón se pinta aparte —es el único sitio donde se puede destacar la
-   * elegida— y por eso tenía sus propios colores fijos. Resultado: se le
-   * cambiaba el color a la capa en su tarjeta, se subía el grosor, y en este
-   * modo no pasaba nada. Un control que no hace nada es peor que no tenerlo.
-   */
-  estilo: { color: string; grosor: number; opacidad: number };
 }
 
 /** Lo que hace falta para montar una lámina: la imagen y su escala. */
@@ -167,7 +140,6 @@ export default function Mapa({
   capas,
   puntos,
   ambito,
-  referencia,
   mapaBase,
   onMapaBase,
   encuadre,
@@ -378,33 +350,6 @@ export default function Mapa({
     }
   }, [mapaBase, listo]);
 
-  /*
-   * Las letras de las plataformas.
-   *
-   * Marcadores de HTML, no rótulos del estilo: poner texto en el mapa obliga a
-   * servir una fuente de glifos entera y aquí son dieciocho letras. Además,
-   * así sobreviven al borrado de capas que hace el efecto de abajo.
-   */
-  const marcas = useRef<maplibregl.Marker[]>([]);
-  useEffect(() => {
-    const m = mapa.current;
-    if (!m || !listo) return;
-    for (const x of marcas.current) x.remove();
-    marcas.current = [];
-    if (!referencia) return;
-    marcas.current = referencia.marcas.map((p) => {
-      const el = document.createElement("div");
-      el.className =
-        "chaski-marca" +
-        (p.clave === referencia.activa ? " chaski-marca--activa" : "");
-      el.textContent = p.letra;
-      el.title = p.titulo;
-      return new maplibregl.Marker({ element: el })
-        .setLngLat([p.lon, p.lat])
-        .addTo(m);
-    });
-  }, [referencia, listo]);
-
   /* Las capas de datos. */
   useEffect(() => {
     const m = mapa.current;
@@ -429,74 +374,6 @@ export default function Mapa({
      * entonces uno tiene las cifras de una plataforma delante sin saber donde
      * empieza ni donde acaba.
      */
-    if (referencia) {
-      const css = getComputedStyle(document.documentElement);
-      const leer = (v: string) => css.getPropertyValue(v).trim();
-      const azul = leer("--gr-azul-500") || "#0f4c81";
-      const tenue = leer("--gr-tinta-3") || "#66757f";
-      /*
-       * Sin plataforma elegida no hay ninguna que destacar.
-       *
-       * Antes eso se resolvía con un filtro «que no case con nada»,
-       * `['==', 1, 0]`. MapLibre lo lee como filtro de los antiguos, donde el
-       * primer operando tiene que ser el nombre de un campo, y lanzaba
-       * «string expected, number found» AL AÑADIR LA CAPA. El error salía en
-       * la consola y el mapa se quedaba a medio montar sin decir nada.
-       *
-       * Ahora, sin elegida, la capa del relleno no se añade y la de las demás
-       * va sin filtro: no hace falta inventarse condiciones imposibles.
-       *
-       * Y «sin filtro» quiere decir SIN LA CLAVE, no `filter: null`. MapLibre
-       * valida el valor igual que cualquier otro y contesta «array expected,
-       * null found», otra vez al añadir la capa y otra vez tumbando el resto
-       * del montaje: las capas de datos se añaden después de estas dos, así
-       * que el mapa se quedaba en blanco con «Rural» o «Todo el cantón»
-       * elegidos, que son justo los dos sitios donde no hay plataforma.
-       */
-      const clave = referencia.activa
-        ? referencia.activa.replace("plataforma:", "")
-        : null;
-      const esta =
-        clave === null
-          ? null
-          : (["==", ["get", "clave"], clave] as maplibregl.FilterSpecification);
-      const otras =
-        clave === null
-          ? null
-          : (["!=", ["get", "clave"], clave] as maplibregl.FilterSpecification);
-
-      m.addSource("mirar-plataformas", {
-        type: "geojson",
-        data: referencia.geo,
-      });
-      m.addLayer({
-        id: "mirar-plataformas-resto",
-        type: "line",
-        source: "mirar-plataformas",
-        ...(otras ? { filter: otras } : {}),
-        paint: {
-          // El color de la capa, apagado: las que NO están elegidas se
-          // dibujan para no perder la orientación, no para competir.
-          "line-color": referencia.estilo.color || tenue,
-          "line-width": 1 * referencia.estilo.grosor,
-          "line-opacity": 0.55,
-          "line-dasharray": [3, 2],
-        },
-      });
-      if (esta) {
-        m.addLayer({
-          id: "mirar-plataformas-relleno",
-          type: "fill",
-          source: "mirar-plataformas",
-          filter: esta,
-          paint: {
-            "fill-color": referencia.estilo.color || azul,
-            "fill-opacity": referencia.estilo.opacidad,
-          },
-        });
-      }
-    }
-
     // Dentro de cada pasada, la primera de la lista manda: se recorre al revés
     // para que acabe dibujándose encima de las demás.
     const alReves = capas.filter((c) => c.visible).reverse();
@@ -625,44 +502,7 @@ export default function Mapa({
       });
     }
 
-    // El contorno de la elegida, lo ultimo: tiene que leerse por encima de lo
-    // que haya cargado. El filete claro va justo debajo porque el azul solo,
-    // sobre calles claras, se pierde.
-    if (referencia?.activa) {
-      const css = getComputedStyle(document.documentElement);
-      const azul = css.getPropertyValue("--gr-azul-500").trim() || "#0f4c81";
-      const claro = css.getPropertyValue("--gr-superficie").trim() || "#ffffff";
-      const soloEsta = [
-        "==",
-        ["get", "clave"],
-        referencia.activa.replace("plataforma:", ""),
-      ] as maplibregl.FilterSpecification;
-      m.addLayer({
-        id: "mirar-plataformas-filete",
-        type: "line",
-        source: "mirar-plataformas",
-        filter: soloEsta,
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": claro,
-          "line-width": 6 * referencia.estilo.grosor,
-          "line-opacity": 0.7,
-        },
-      });
-      m.addLayer({
-        id: "mirar-plataformas-linea",
-        type: "line",
-        source: "mirar-plataformas",
-        filter: soloEsta,
-        layout: { "line-join": "round", "line-cap": "round" },
-        paint: {
-          "line-color": referencia.estilo.color || azul,
-          "line-width": 2.6 * referencia.estilo.grosor,
-          "line-opacity": 0.95,
-        },
-      });
-    }
-  }, [capas, puntos, ambito, referencia, listo]);
+  }, [capas, puntos, ambito, listo]);
 
   /* La ficha del registro, al hacer clic. */
   useEffect(() => {
