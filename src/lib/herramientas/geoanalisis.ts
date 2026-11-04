@@ -10,7 +10,7 @@
  * que ninguna zona lo explique.
  */
 import { poligonosDe } from '../geo'
-import { aMulti, intersecar, planoDe } from '../geoproceso'
+import { aMulti, intersecar, planoDe, unir, type Multi } from '../geoproceso'
 import { planoDe as _planoDe } from '../geoproceso'
 import { areaHa, areaM2, longitudM, longitudPorZona, prepararZonas, zonaDe } from '../medidas'
 import { ESTADISTICOS, aNumero, kMedias, necesitaCampo, resumir, type Estadistico } from '../estadistica'
@@ -389,6 +389,152 @@ export const GEOANALISIS: Herramienta[] = [
               },
             ],
             metodo: `Cada pieza se interseca con cada zona y se mide el solape, así que una que cruce el límite reparte su superficie entre las dos. El campo cobertura_pct dice qué parte de la zona ocupa.${fallidas > 0 ? ` ${numero(fallidas)} pares con geometría inválida se saltaron.` : ''}`,
+          },
+        ),
+      }
+    },
+  },
+
+  {
+    clave: 'poblacion-alcanzada',
+    categoria: 'geoanalisis',
+    nombre: 'Población alcanzada',
+    nota: 'Cuánta gente queda dentro de una cobertura, repartiendo las piezas que cruzan el límite. Para saber a cuántos alcanza un equipamiento, una isócrona o un radio.',
+    acepta: ['poligono', 'mixta'],
+    parametros: [
+      {
+        tipo: 'capa',
+        clave: 'cobertura',
+        rotulo: 'Cobertura',
+        formas: ['poligono', 'mixta'],
+        nota: 'El área que alcanza el servicio: una zona de influencia, una isócrona a pie o cualquier capa de áreas.',
+      },
+      {
+        tipo: 'campo',
+        clave: 'campoPob',
+        rotulo: 'Qué se reparte',
+        numerico: true,
+        nota: 'La columna con la gente, las viviendas o lo que se quiera repartir. Tiene que ser un total de la pieza, no una densidad ni un porcentaje: esos no se suman.',
+      },
+      ...FILTRO,
+    ],
+    correr(ctx) {
+      const capaCobertura = capaDe(ctx, 'cobertura')
+      if (!capaCobertura) return { error: 'Elige la capa que marca hasta dónde llega la cobertura.' }
+      const campoPob = ctx.valores.campoPob
+      if (!campoPob) return { error: 'Elige la columna que se reparte, por ejemplo población.' }
+
+      const zonas = prepararZonas(capaCobertura.geo)
+      if (zonas.length === 0) return { error: `«${capaCobertura.nombre}» no trae polígonos.` }
+      const piezas = rasgosFiltrados(ctx).filter((f) => poligonosDe(f.geometry!).length > 0)
+      if (piezas.length === 0) return { error: 'Con este filtro no queda ningún polígono.' }
+
+      const plano = planoDe([
+        ...piezas.map((f) => f.geometry),
+        ...capaCobertura.geo.features.map((f) => f.geometry),
+      ])
+
+      const salida: GeoJSON.Feature[] = []
+      let alcanzada = 0
+      let total = 0
+      let enteras = 0
+      let partidas = 0
+      let fallidas = 0
+
+      for (const f of piezas) {
+        const valor = aNumero((f.properties ?? {})[campoPob])
+        const suyaM2 = areaM2(f.geometry as GeoJSON.Geometry)
+        const caja = cajaDeGeometria(f.geometry as GeoJSON.Geometry)
+        const a = aMulti(f.geometry)
+
+        /*
+         * La superficie cubierta se mide contra la UNION de las coberturas,
+         * no sumando una por una.
+         *
+         * Dos isocronas vecinas se pisan casi siempre —la de la escuela y la
+         * del parque cubren la misma manzana— y sumando sus solapes esa
+         * manzana saldria cubierta al 180 %, con mas gente alcanzada de la
+         * que vive en ella. Aqui cada trozo entra una sola vez.
+         */
+        const trozos: Multi[] = []
+        for (const z of zonas) {
+          if (!seTocan(caja, z.caja)) continue
+          const b = z.poligonos.map((poly) => poly.map((an) => an.map((p) => [p[0], p[1]])))
+          const r = intersecar(a, b, plano)
+          if (!r) {
+            fallidas++
+            continue
+          }
+          if (r.length) trozos.push(r)
+        }
+        const comoArea = (m: Multi) =>
+          ({ type: 'MultiPolygon' as const, coordinates: m }) as GeoJSON.MultiPolygon
+
+        let cubiertaM2 = 0
+        if (trozos.length === 1) {
+          cubiertaM2 = areaM2(comoArea(trozos[0]))
+        } else if (trozos.length > 1) {
+          const union = unir(trozos, plano)
+          if (union) {
+            cubiertaM2 = areaM2(comoArea(union))
+          } else {
+            // Si la union falla, se queda con el trozo mayor en vez de sumarlos:
+            // sumar solapes inventa cobertura, y quedarse corto se nota en el
+            // porcentaje. Mejor por debajo que por encima.
+            fallidas++
+            cubiertaM2 = Math.max(...trozos.map((t) => areaM2(comoArea(t))))
+          }
+        }
+
+        const frac = suyaM2 > 0 ? Math.min(1, cubiertaM2 / suyaM2) : 0
+        // Lo que no trae numero cuenta como cero AQUI, en la suma, y no se
+        // escribe como cero en la capa: la pieza sigue diciendo que no tiene
+        // dato. Sumar null arruinaria el total; escribirlo afirmaria que no
+        // vive nadie.
+        const suya = valor !== null && Number.isFinite(valor) ? valor : 0
+        total += suya
+        alcanzada += suya * frac
+        if (frac >= 0.999) enteras++
+        else if (frac > 0) partidas++
+
+        salida.push({
+          type: 'Feature',
+          geometry: f.geometry,
+          properties: conCalculados(f.properties ?? {}, {
+            cubierto_pct: +(frac * 100).toFixed(2),
+            alcanzado: +(suya * frac).toFixed(1),
+          }),
+        })
+      }
+
+      const pct = total > 0 ? (alcanzada / total) * 100 : 0
+      return {
+        capa: capaDerivada(
+          `Población alcanzada · ${ctx.capa.nombre}`,
+          `${campoPob} de ${ctx.capa.nombre} dentro de ${capaCobertura.nombre}`,
+          { type: 'FeatureCollection', features: salida },
+          {
+            tema: temaEscala(
+              salida.map((f) => Number(f.properties?.cubierto_pct ?? 0)),
+              'cubierto_pct',
+              '% cubierto',
+              'Sin color: esas piezas quedan fuera de toda la cobertura.',
+            ),
+            resumen: [
+              { etiqueta: 'Alcanzada', valor: numero(Math.round(alcanzada)) },
+              { etiqueta: 'De un total de', valor: numero(Math.round(total)) },
+              { etiqueta: 'Cobertura', valor: porcentaje(pct) },
+              { etiqueta: 'Sin alcanzar', valor: numero(Math.round(total - alcanzada)) },
+              {
+                etiqueta: 'Piezas enteras · a medias',
+                valor: `${numero(enteras)} · ${numero(partidas)}`,
+              },
+            ],
+            metodo:
+              `Cada pieza aporta la parte de «${campoPob}» proporcional a su superficie cubierta: una manzana con 80 habitantes, cubierta a medias, aporta 40. ` +
+              'Eso supone que la gente está repartida por igual dentro de la pieza, que es razonable en una manzana y cada vez menos a medida que la pieza crece. ' +
+              'Las coberturas que se pisan se unen antes de medir, así que nadie se cuenta dos veces.' +
+              (fallidas > 0 ? ` ${numero(fallidas)} pares con geometría inválida se saltaron.` : ''),
           },
         ),
       }
