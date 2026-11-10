@@ -11,6 +11,22 @@
  * intermediario. No se copia ni un archivo, no pesa ni un mega en este
  * repositorio, y cuando el visor actualice una capa, aquí entra la nueva.
  *
+ * LAS CAPAS DE UNIDADES TRAEN MÁS QUE SU GEOMETRÍA. Plataformas, barrios,
+ * parroquias y clasificación del suelo llegan con columnas que no se pueden
+ * calcular aquí: la población del Censo 2022 repartida por edificios, el
+ * reparto de cobertura del suelo de ESA WorldCover —cuánto de la unidad es
+ * construido, cultivo, bosque o herbazal— y el volumen construido que sale de
+ * Google Open Buildings 2023.
+ *
+ * Están ahí porque las fuentes de las que salen no caben en un navegador: la
+ * cobertura es un ráster de 10 m y la edificación son 166.530 polígonos. Lo
+ * que se analiza no es cada píxel ni cada edificio, es el agregado por unidad,
+ * y eso cabe en unas columnas que se filtran, se pintan y se cruzan.
+ *
+ * Ninguna de las dos es cartografía oficial: son modelos, con sus errores
+ * declarados, y sirven para comparar unidades entre sí, no para certificar
+ * nada de un predio. Las dos son CC BY 4.0.
+ *
  * La contrapartida está dicha donde se usa: esto depende de que el visor siga
  * publicado. Por eso las cuatro capas del ejemplo siguen viviendo en
  * `public/ejemplo/`, para que probar la aplicación nunca dependa de internet.
@@ -53,15 +69,15 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "plataformas.geojson",
     nombre: "Plataformas",
-    nota: "18 plataformas del casco, con habitantes y viviendas del Censo 2022",
-    peso: "37 KB",
+    nota: "18 plataformas del casco: Censo 2022, cobertura del suelo y volumen construido",
+    peso: "43 KB",
     poblacion: "plataformas",
   },
   {
     archivo: "barrios.geojson",
     nombre: "Barrios",
-    nota: "212 barrios urbanos, con habitantes y viviendas del Censo 2022",
-    peso: "124 KB",
+    nota: "212 barrios urbanos: Censo 2022, cobertura del suelo y volumen construido",
+    peso: "171 KB",
     poblacion: "barrios",
   },
   {
@@ -74,8 +90,8 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "clasificacion_suelo.geojson",
     nombre: "Clasificación del suelo",
-    nota: "Lo urbano y lo rural del cantón, con habitantes y viviendas",
-    peso: "255 KB",
+    nota: "Lo urbano y lo rural del cantón, con población y cobertura del suelo",
+    peso: "263 KB",
   },
   {
     archivo: "limite_urbano.geojson",
@@ -86,8 +102,8 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "parroquias_canton.geojson",
     nombre: "Parroquias",
-    nota: "17 del cantón, con habitantes y viviendas del Censo 2022",
-    peso: "225 KB",
+    nota: "17 del cantón: Censo 2022, cobertura del suelo y volumen construido",
+    peso: "229 KB",
   },
   {
     archivo: "equipamientos.geojson",
@@ -104,7 +120,7 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   {
     archivo: "red.json",
     nombre: "Vialidad",
-    nota: "17.636 tramos de la red vial completa, 1.931 km",
+    nota: "17.636 tramos, 1.931 km, con la altitud de cada nodo",
     peso: "2 MB",
     pesada: true,
     formato: "red",
