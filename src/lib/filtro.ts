@@ -15,6 +15,17 @@
  * está puesto es un número equivocado esperando su turno.
  */
 import type { Capa } from "./cargar";
+import { compilar } from "./expresion";
+
+/** Los nombres de campo que trae una capa, leidos del primer registro util. */
+const campos = (geo: GeoJSON.FeatureCollection): string[] => {
+  const vistos = new Set<string>();
+  for (const f of geo.features) {
+    for (const k of Object.keys(f.properties ?? {})) vistos.add(k);
+    if (vistos.size && f.properties) break;
+  }
+  return [...vistos];
+};
 
 /**
  * Un filtro es de una de dos clases, y se distinguen por si traen `op`.
@@ -25,7 +36,7 @@ import type { Capa } from "./cargar";
  * siguen siendo exactamente un filtro por lista. Anadir un `tipo` obligatorio
  * habria roto en silencio toda mesa guardada antes de hoy.
  */
-export type Filtro = FiltroLista | FiltroRango;
+export type Filtro = FiltroLista | FiltroRango | FiltroExpresion;
 
 /** Un campo y los valores que se quedan. Sin valores, la capa entera. */
 export interface FiltroLista {
@@ -52,7 +63,22 @@ export interface FiltroRango {
   b?: number;
 }
 
+/**
+ * Una expresion escrita a mano, como la de QGIS.
+ *
+ * No lleva `campo` porque puede hablar de varios a la vez, que es justamente
+ * lo que las otras dos clases no saben hacer.
+ */
+export interface FiltroExpresion {
+  expr: string;
+  campo?: undefined;
+  valores?: undefined;
+  op?: undefined;
+}
+
 export const esRango = (f: Filtro): f is FiltroRango => f.op !== undefined;
+export const esExpresion = (f: Filtro): f is FiltroExpresion =>
+  (f as FiltroExpresion).expr !== undefined;
 
 /**
  * El numero que hay dentro de un valor, o NaN si no hay ninguno.
@@ -184,7 +210,9 @@ export function valoresDe(
  * otro— no puede vaciar la capa mientras tanto.
  */
 export const filtraAlgo = (f: Filtro | undefined): f is Filtro => {
-  if (!f || !f.campo) return false;
+  if (!f) return false;
+  if (esExpresion(f)) return f.expr.trim() !== "";
+  if (!f.campo) return false;
   if (esRango(f)) {
     return Number.isFinite(f.a) && (f.op !== "entre" || Number.isFinite(f.b));
   }
@@ -196,6 +224,17 @@ export function aplicar(
   geo: GeoJSON.FeatureCollection,
   filtro: Filtro,
 ): GeoJSON.FeatureCollection {
+  if (esExpresion(filtro)) {
+    const c = compilar(filtro.expr, campos(geo));
+    // Una expresion rota no vacia la capa: deja de filtrar. Lo contrario
+    // seria ensenar cero registros y hacer creer que no hay ninguno que
+    // cumpla, cuando lo que pasa es que la pregunta no se entendio.
+    if (!c.ok) return geo;
+    return {
+      type: "FeatureCollection",
+      features: geo.features.filter((f) => c.pasa(f.properties ?? {})),
+    };
+  }
   if (esRango(filtro)) {
     return {
       type: "FeatureCollection",
@@ -235,6 +274,9 @@ export const SIGNO: Record<Operador, string> = {
 
 /** Cómo se lee un filtro puesto, para decirlo en una línea. */
 export function comoFrase(f: Filtro): string {
+  if (esExpresion(f)) {
+    return f.expr.length > 46 ? f.expr.slice(0, 44) + "…" : f.expr;
+  }
   if (esRango(f)) {
     const n = (x: number | undefined) =>
       x === undefined || !Number.isFinite(x)

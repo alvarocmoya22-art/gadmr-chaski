@@ -7,7 +7,7 @@
  * lleva un resultado es su ficha —las cifras, la leyenda y cómo se obtuvo—,
  * porque sin eso nadie puede defenderlo en una mesa técnica.
  */
-import { useMemo, useState } from "react";
+import { useRef, useMemo, useState } from "react";
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from "../lib/municipio";
 import type { ReactNode } from "react";
 import type { Capa } from "../lib/cargar";
@@ -19,6 +19,7 @@ import {
   aplicar,
   comoFrase,
   enRango,
+  esExpresion,
   esRango,
   filtraAlgo,
   perfilNumerico,
@@ -27,6 +28,7 @@ import {
   type Filtro,
   type Operador,
 } from "../lib/filtro";
+import { compilar, NOMBRES_FUNCION } from "../lib/expresion";
 import { distintosDe, esNumerico, temaDe } from "../lib/estilo";
 import type { Tema } from "../lib/medidas";
 
@@ -637,7 +639,22 @@ function CajaFiltro({
     () => (campo ? perfilNumerico(capa.geo, campo) : null),
     [capa.geo, campo],
   );
-  const [modo, setModo] = useState<"lista" | "rango">(() => {
+  const cajaTexto = useRef<HTMLTextAreaElement | null>(null);
+  const [texto, setTexto] = useState(() =>
+    capa.filtro && esExpresion(capa.filtro) ? capa.filtro.expr : "",
+  );
+  const compilada = useMemo(
+    () => (texto.trim() ? compilar(texto, campos) : null),
+    [texto, campos],
+  );
+  const pasanExpr = useMemo(() => {
+    if (!compilada?.ok) return null;
+    return capa.geo.features.filter((f) => compilada.pasa(f.properties ?? {}))
+      .length;
+  }, [compilada, capa.geo]);
+
+  const [modo, setModo] = useState<"lista" | "rango" | "expr">(() => {
+    if (capa.filtro && esExpresion(capa.filtro)) return "expr";
     // La misma regla que al cambiar de campo, tambien al abrir: si no, la
     // caja se abria en la lista justo sobre el campo donde la lista no sirve.
     if (capa.filtro?.campo === campo) {
@@ -672,7 +689,9 @@ function CajaFiltro({
   // Los marcados son los del filtro SOLO si es de este campo: al cambiar de
   // campo, los valores de antes no significan nada aqui.
   const marcados = new Set(
-    capa.filtro?.campo === campo && !esRango(capa.filtro)
+    capa.filtro?.campo === campo &&
+    !esRango(capa.filtro) &&
+    !esExpresion(capa.filtro)
       ? capa.filtro.valores
       : [],
   );
@@ -712,7 +731,9 @@ function CajaFiltro({
   // tiene lista que sumar, y el numero que se ensena tiene que salir del
   // mismo calculo que luego recorta de verdad.
   const quedan =
-    modo === "rango"
+    modo === "expr"
+      ? (pasanExpr ?? capa.geo.features.length)
+      : modo === "rango"
       ? rango && esRango(rango)
         ? capa.geo.features.filter((f) =>
             enRango(aNumero(f.properties?.[campo]), rango),
@@ -758,12 +779,15 @@ function CajaFiltro({
       {/* Las dos maneras de filtrar, y solo cuando las dos valen. Sobre un
           campo de texto no se ofrece comparar: «mayor que» sobre nombres de
           barrio es una pregunta sin respuesta. */}
-      {perfil?.numerico && (
-        <div className="flex gap-1">
+      {/* El tercer modo se ofrece SIEMPRE: una expresion no depende de que el
+          campo elegido traiga numeros, porque puede hablar de varios campos a
+          la vez. Es justamente lo que los otros dos no saben hacer. */}
+      <div className="flex gap-1">
           {(
             [
               ["lista", "Por valor"],
-              ["rango", "Por número"],
+              ...(perfil?.numerico ? [["rango", "Por número"] as const] : []),
+              ["expr", "Expresión"],
             ] as const
           ).map(([k, r]) => (
             <button
@@ -783,6 +807,74 @@ function CajaFiltro({
               {r}
             </button>
           ))}
+      </div>
+
+      {modo === "expr" && (
+        <div className="space-y-1.5">
+          <textarea
+            ref={cajaTexto}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            rows={3}
+            spellCheck={false}
+            placeholder={'"area_m2" >= 10000 AND "area_m2" <= 15000'}
+            className="w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 font-mono text-[11px] text-[var(--gr-tinta)]"
+          />
+
+          {/* Los campos se pinchan en vez de teclearse: escribir mal un
+              nombre es el error numero uno de cualquier editor de
+              expresiones, y aqui no hay por que cometerlo. */}
+          <div className="flex flex-wrap gap-1">
+            {campos.slice(0, 14).map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => {
+                  const ta = cajaTexto.current;
+                  const trozo = `"${n}"`;
+                  if (!ta) return setTexto(texto + trozo);
+                  const i = ta.selectionStart ?? texto.length;
+                  const j = ta.selectionEnd ?? i;
+                  setTexto(texto.slice(0, i) + trozo + texto.slice(j));
+                  requestAnimationFrame(() => {
+                    ta.focus();
+                    ta.setSelectionRange(i + trozo.length, i + trozo.length);
+                  });
+                }}
+                className="rounded border border-[var(--gr-linea)] px-1 py-0.5 font-mono text-[10px] text-[var(--gr-tinta-3)] hover:border-[var(--gr-azul-500)] hover:text-[var(--gr-azul-500)]"
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
+          {compilada && !compilada.ok && (
+            <p className="text-[11px] text-[var(--gr-rojo-500)]">
+              {compilada.error}
+              {` · columna ${compilada.desde + 1}`}
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={!compilada?.ok}
+            onClick={() =>
+              compilada?.ok && onCambio({ expr: texto.trim() })
+            }
+            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-500)] disabled:opacity-40"
+          >
+            {compilada?.ok && pasanExpr !== null
+              ? `Dejar ${numero(pasanExpr)} de ${numero(capa.geo.features.length)}`
+              : texto.trim()
+                ? "La expresión no se entiende"
+                : "Escriba una condición"}
+          </button>
+
+          <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            {`= <> < <= > >= · AND OR NOT · IN (…) · BETWEEN … AND … · LIKE '0601%' · IS NULL · + - * / · `}
+            {NOMBRES_FUNCION.join(" ")}
+            {". Un registro sin valor no pasa ninguna comparación: para buscarlos, IS NULL."}
+          </p>
         </div>
       )}
 
@@ -899,7 +991,8 @@ function CajaFiltro({
 
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-[var(--gr-tinta-3)]">
-          {filtraAlgo(capa.filtro) && capa.filtro.campo === campo
+          {filtraAlgo(capa.filtro) &&
+          (esExpresion(capa.filtro) || capa.filtro.campo === campo)
             ? `Quedan ${numero(quedan)} de ${numero(capa.geo.features.length)}`
             : "Sin filtro: la capa entera"}
         </span>
