@@ -15,11 +15,17 @@ import { descargar } from "../lib/exportar";
 import { cifraLeyenda } from "../lib/medidas";
 import { numero } from "../lib/format";
 import {
+  aNumero,
   aplicar,
   comoFrase,
+  enRango,
+  esRango,
   filtraAlgo,
+  perfilNumerico,
+  SIGNO,
   valoresDe,
   type Filtro,
+  type Operador,
 } from "../lib/filtro";
 import { distintosDe, esNumerico, temaDe } from "../lib/estilo";
 import type { Tema } from "../lib/medidas";
@@ -614,6 +620,47 @@ function CajaFiltro({
    * esfuerzo; por debajo, el buscador estorba mas de lo que ayuda.
    */
   const [busca, setBusca] = useState("");
+
+  /*
+   * MARCAR VALORES NO SIRVE PARA UNA CIFRA.
+   *
+   * Pedir «predios de 1.000 m2 o mas» con una lista de casillas obliga a
+   * marcar a mano cada superficie distinta que haya por encima: centenares.
+   * Por eso, cuando el campo trae numeros, la caja ofrece tambien comparar.
+   *
+   * Y entra directamente en ese modo si ademas la lista es larga, que es
+   * justo donde marcar no es una opcion. Con pocos valores distintos —un
+   * codigo de uno a cinco, por ejemplo— la lista sigue siendo mejor: se ve de
+   * que hay mucho y de que hay poco.
+   */
+  const perfil = useMemo(
+    () => (campo ? perfilNumerico(capa.geo, campo) : null),
+    [capa.geo, campo],
+  );
+  const [modo, setModo] = useState<"lista" | "rango">(() => {
+    // La misma regla que al cambiar de campo, tambien al abrir: si no, la
+    // caja se abria en la lista justo sobre el campo donde la lista no sirve.
+    if (capa.filtro?.campo === campo) {
+      return esRango(capa.filtro) ? "rango" : "lista";
+    }
+    const p = perfilNumerico(capa.geo, campo);
+    const distintos = capa.campos.find((c) => c.nombre === campo)?.distintos ?? 0;
+    return p.numerico && distintos > 12 ? "rango" : "lista";
+  });
+  const [op, setOp] = useState<Operador>(() =>
+    capa.filtro && esRango(capa.filtro) ? capa.filtro.op : ">=",
+  );
+  // De texto y no de numero: mientras alguien borra una cifra para teclear
+  // otra, el campo esta vacio, y un `number` vacio es NaN. Se guarda lo
+  // tecleado y se convierte al usarlo.
+  const [desde, setDesde] = useState(() =>
+    capa.filtro && esRango(capa.filtro) ? String(capa.filtro.a) : "",
+  );
+  const [hasta, setHasta] = useState(() =>
+    capa.filtro && esRango(capa.filtro) && capa.filtro.b !== undefined
+      ? String(capa.filtro.b)
+      : "",
+  );
   const normal = (s: string) =>
     s
       .toLowerCase()
@@ -625,7 +672,9 @@ function CajaFiltro({
   // Los marcados son los del filtro SOLO si es de este campo: al cambiar de
   // campo, los valores de antes no significan nada aqui.
   const marcados = new Set(
-    capa.filtro?.campo === campo ? capa.filtro.valores : [],
+    capa.filtro?.campo === campo && !esRango(capa.filtro)
+      ? capa.filtro.valores
+      : [],
   );
 
   const alternar = (v: string) => {
@@ -645,9 +694,33 @@ function CajaFiltro({
 
   // Sobre TODOS los valores y no sobre los que deja ver la busqueda: lo que
   // queda en la capa no depende de lo que uno tenga escrito en el buscador.
-  const quedan = marcados.size
-    ? todos.filter((v) => marcados.has(v.valor)).reduce((s, v) => s + v.n, 0)
-    : capa.geo.features.length;
+  const rangoPedido = (): Filtro | null => {
+    // Vacio NO es cero. `Number("")` da 0, asi que una casilla en blanco se
+    // leia como «>= 0» y el boton ofrecia dejar las 3.757 de 3.757 filas: un
+    // filtro que no filtra, presentado como si filtrara.
+    const cifra = (s: string) =>
+      s.trim() === "" ? NaN : Number(s.replace(",", "."));
+    const x = cifra(desde);
+    const y = cifra(hasta);
+    if (!Number.isFinite(x)) return null;
+    if (op === "entre" && !Number.isFinite(y)) return null;
+    return { campo, op, a: x, ...(op === "entre" ? { b: y } : {}) };
+  };
+  const rango = modo === "rango" ? rangoPedido() : null;
+
+  // Se cuenta recorriendo la capa y no sumando los de la lista: un tramo no
+  // tiene lista que sumar, y el numero que se ensena tiene que salir del
+  // mismo calculo que luego recorta de verdad.
+  const quedan =
+    modo === "rango"
+      ? rango && esRango(rango)
+        ? capa.geo.features.filter((f) =>
+            enRango(aNumero(f.properties?.[campo]), rango),
+          ).length
+        : capa.geo.features.length
+      : marcados.size
+        ? todos.filter((v) => marcados.has(v.valor)).reduce((s, v) => s + v.n, 0)
+        : capa.geo.features.length;
 
   return (
     <div className="mt-1.5 space-y-1.5 rounded border border-[var(--gr-linea)] p-1.5">
@@ -656,10 +729,20 @@ function CajaFiltro({
         <select
           value={campo}
           onChange={(e) => {
-            setCampo(e.target.value);
+            const nuevo = e.target.value;
+            setCampo(nuevo);
             setBusca("");
-            // Cambiar de campo deja la capa entera: arrastrar los valores del
-            // campo anterior filtraria por algo que ya no se esta mirando.
+            setDesde("");
+            setHasta("");
+            // El modo lo elige el campo, no lo que hubiera puesto antes: un
+            // tramo heredado sobre un campo de texto no filtraria nada y
+            // pareceria roto.
+            const p = perfilNumerico(capa.geo, nuevo);
+            const distintos =
+              capa.campos.find((c) => c.nombre === nuevo)?.distintos ?? 0;
+            setModo(p.numerico && distintos > 12 ? "rango" : "lista");
+            // Y deja la capa entera: arrastrar los valores del campo anterior
+            // filtraria por algo que ya no se esta mirando.
             onCambio(null);
           }}
           className="mt-0.5 w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
@@ -672,7 +755,102 @@ function CajaFiltro({
         </select>
       </label>
 
-      {todos.length > 12 && (
+      {/* Las dos maneras de filtrar, y solo cuando las dos valen. Sobre un
+          campo de texto no se ofrece comparar: «mayor que» sobre nombres de
+          barrio es una pregunta sin respuesta. */}
+      {perfil?.numerico && (
+        <div className="flex gap-1">
+          {(
+            [
+              ["lista", "Por valor"],
+              ["rango", "Por número"],
+            ] as const
+          ).map(([k, r]) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={modo === k}
+              onClick={() => {
+                setModo(k);
+                onCambio(null);
+              }}
+              className={`flex-1 rounded border px-1.5 py-1 text-[11px] ${
+                modo === k
+                  ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-500)] text-white"
+                  : "border-[var(--gr-linea)] text-[var(--gr-tinta-2)]"
+              }`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {modo === "rango" && perfil && (
+        <div className="space-y-1.5">
+          <div className="flex gap-1">
+            <select
+              value={op}
+              onChange={(e) => {
+                const o = e.target.value as Operador;
+                setOp(o);
+                onCambio(null);
+              }}
+              className="rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1 py-1 text-xs text-[var(--gr-tinta)]"
+            >
+              {(Object.keys(SIGNO) as Operador[]).map((o) => (
+                <option key={o} value={o}>
+                  {SIGNO[o]}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={desde}
+              onChange={(e) => setDesde(e.target.value)}
+              placeholder={numero(Math.round(perfil.min))}
+              className="w-full min-w-0 rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+            />
+            {op === "entre" && (
+              <input
+                type="number"
+                inputMode="decimal"
+                value={hasta}
+                onChange={(e) => setHasta(e.target.value)}
+                placeholder={numero(Math.round(perfil.max))}
+                className="w-full min-w-0 rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+              />
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={!rango}
+            onClick={() => rango && onCambio(rango)}
+            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-500)] disabled:opacity-40"
+          >
+            {rango
+              ? `Dejar ${numero(quedan)} de ${numero(capa.geo.features.length)}`
+              : "Escriba una cifra"}
+          </button>
+
+          {/* De cuanto a cuanto va el campo: sin esto uno teclea 1000 sobre
+              un campo que no pasa de 40 y se queda con la capa vacia sin
+              entender por que. */}
+          <p className="text-[11px] text-[var(--gr-tinta-3)]">
+            {`${campo} va de ${numero(perfil.min)} a ${numero(perfil.max)}.`}
+            {perfil.sinNumero > 0 &&
+              ` ${numero(perfil.sinNumero)} ${
+                perfil.sinNumero === 1
+                  ? "fila no trae un número y queda fuera"
+                  : "filas no traen un número y quedan fuera"
+              }.`}
+          </p>
+        </div>
+      )}
+
+      {modo === "lista" && todos.length > 12 && (
         <input
           type="search"
           value={busca}
@@ -685,13 +863,16 @@ function CajaFiltro({
       {/* Lo ya marcado se dice aunque la busqueda lo haya dejado fuera de la
           lista: si no, uno busca «SANTA», ve ninguna marcada y cree que no
           hay filtro puesto. */}
-      {marcados.size > 0 && valores.filter((v) => marcados.has(v.valor)).length <
-        marcados.size && (
+      {modo === "lista" &&
+        marcados.size > 0 &&
+        valores.filter((v) => marcados.has(v.valor)).length <
+          marcados.size && (
         <p className="text-[11px] text-[var(--gr-tinta-3)]">
           {`${numero(marcados.size)} marcados, algunos fuera de la búsqueda.`}
         </p>
       )}
 
+      {modo === "lista" && (
       <ul className="max-h-48 space-y-0.5 overflow-y-auto">
         {valores.length === 0 && (
           <li className="text-xs text-[var(--gr-tinta-3)]">
@@ -714,14 +895,15 @@ function CajaFiltro({
           </li>
         ))}
       </ul>
+      )}
 
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-[var(--gr-tinta-3)]">
-          {marcados.size === 0
-            ? "Sin filtro: la capa entera"
-            : `Quedan ${numero(quedan)} de ${numero(capa.geo.features.length)}`}
+          {filtraAlgo(capa.filtro) && capa.filtro.campo === campo
+            ? `Quedan ${numero(quedan)} de ${numero(capa.geo.features.length)}`
+            : "Sin filtro: la capa entera"}
         </span>
-        {marcados.size > 0 && (
+        {filtraAlgo(capa.filtro) && (
           <button
             type="button"
             onClick={() => onCambio(null)}
