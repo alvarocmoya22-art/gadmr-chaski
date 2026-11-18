@@ -129,13 +129,21 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
     pesada: true,
     formato: "red",
   },
-  {
-    archivo: "edificios.geojson",
-    nombre: "Edificación declarada",
-    nota: "6.039 huellas del área urbana, con la altura que declara OpenStreetMap",
-    peso: "1,6 MB",
-    pesada: true,
-  },
+  /*
+   * NO HAY UNA SEGUNDA CAPA DE EDIFICACIÓN, y es a propósito.
+   *
+   * Estuvo la de OpenStreetMap —`edificios.geojson`, 6.039 huellas del área
+   * urbana con la altura declarada— al lado de esta. Dos capas que se llaman
+   * casi igual, se dibujan igual y dan cifras distintas sobre la misma
+   * manzana: la pregunta «¿cuántas edificaciones hay?» pasaba a tener dos
+   * respuestas sin que nada en pantalla dijera cuál contestaba a qué. Un
+   * número equivocado esperando su turno, que es justo lo que este programa
+   * existe para no producir.
+   *
+   * Si alguna vez hace falta lo declarado frente a lo estimado, el archivo
+   * sigue publicado en el visor y se suelta a mano. Lo que no vuelve es a
+   * ofrecer las dos en la misma lista.
+   */
   /*
    * La edificación del cantón entero, la misma que el visor extruye.
    *
