@@ -97,6 +97,30 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
     nota: "Lo urbano y lo rural del cantón, con población y cobertura del suelo",
     peso: "263 KB",
   },
+  /*
+   * La normativa del PUGS, polígono a polígono.
+   *
+   * La clasificación de arriba dice DÓNDE acaba lo urbano; esta dice QUÉ SE
+   * PUEDE HACER en cada trozo de ello. Trece de sus campos son numéricos
+   * —lote mínimo, pisos, alturas, COS, los tres retiros— así que se filtra y
+   * se cruza como cualquier otra capa: «dame los PIT de más de cuatro pisos
+   * que caen en tal barrio» es una pregunta que antes no se podía hacer.
+   *
+   * `texto_cortado` NO ES UN CAMPO DE RELLENO. El origen es un shapefile y un
+   * campo de texto suyo no pasa de 254 bytes, así que 156 de los 170 traen
+   * alguna lista de usos cortada —140 el uso prohibido—. La columna dice
+   * cuáles, de modo que se pueden sacar de un análisis en vez de contarlos
+   * como si la lista estuviera completa. Lo que acaba en «…» sigue en la
+   * ordenanza y no en este archivo.
+   */
+  {
+    archivo: "pit_urbano.geojson",
+    nombre: "Polígonos de intervención · PUGS",
+    nota:
+      "170 PIT del suelo urbano: tratamiento, lote mínimo, pisos, COS, " +
+      "retiros y usos · 156 traen alguna lista de usos cortada en el origen",
+    peso: "625 KB",
+  },
   {
     archivo: "limite_urbano.geojson",
     nombre: "Límite urbano",

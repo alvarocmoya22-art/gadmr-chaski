@@ -207,6 +207,7 @@ otro origen sin intermediario.
 | Equipamientos | 1.083 equipamientos con tipo y estado | 430 KB |
 | Proyectos 2026 | 41 proyectos con monto, estado y tipología | 21 KB |
 | Vialidad | 17.636 tramos, 1.931 km | 2 MB |
+| Polígonos de intervención · PUGS | 170 PIT urbanos con su normativa completa | 625 KB |
 | Edificación del cantón | 166.530 edificaciones, altura estimada y parroquia | 12,7 MB |
 | Catastro | 41.681 predios con clave y superficie | 15 MB |
 
@@ -222,6 +223,15 @@ y llega como shapefile comprimido —el lector lo abre por la extensión, igual
 que si se soltara desde el escritorio—. En el visor esa misma capa va en
 teselas, que se recortan por cuadro y por eso sirven para pintarla y no para
 contarla; aquí vienen los objetos enteros.
+
+Los **polígonos de intervención** son el cuerpo del PUGS: para cada trozo de
+suelo urbano, qué tratamiento le toca, qué lote mínimo, cuántos pisos, cuánto
+COS, qué retiros y qué usos. Trece de sus campos son numéricos, así que se
+filtran y se cruzan como cualquier otra capa. Traen una columna de aviso,
+`texto_cortado`: el origen es un shapefile y ahí un campo de texto no pasa de
+254 bytes, de modo que **156 de los 170 llegan con alguna lista de usos
+cortada** —140 el uso prohibido—. Lo que acaba en «…» sigue en la ordenanza y
+no en el archivo.
 
 **Es la única de edificación, a propósito.** Estuvo al lado la de
 OpenStreetMap, 6.039 huellas urbanas con la altura declarada, y dos capas que
