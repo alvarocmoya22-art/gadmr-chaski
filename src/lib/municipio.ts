@@ -38,7 +38,8 @@ export const ORIGEN_VISOR =
   "https://alvarocmoya22-art.github.io/gadmr-visor-territorio/datos";
 
 export const FUENTE_MUNICIPIO =
-  "Capas del visor de territorio del GADM Riobamba. Lo derivado de OpenStreetMap es ODbL.";
+  "Capas del visor de territorio del GADM Riobamba. Lo derivado de OpenStreetMap " +
+  "es ODbL; la edificación del cantón es de Google Open Buildings, CC BY 4.0.";
 
 export interface CapaMunicipal {
   archivo: string;
@@ -50,7 +51,10 @@ export interface CapaMunicipal {
   pesada?: boolean;
   /**
    * `red` es el grafo de la vialidad, que no es GeoJSON y hay que convertir.
-   * Las demás se leen con el mismo lector que un archivo soltado a mano.
+   *
+   * Las demás no declaran nada: se bajan tal cual y se las pasa al mismo lector
+   * que un archivo soltado a mano, que mira la extensión. Por eso el catálogo
+   * puede ofrecer un shapefile en zip sin una línea de código nueva.
    */
   formato?: "geojson" | "red";
   /**
@@ -127,9 +131,38 @@ export const CAPAS_MUNICIPIO: CapaMunicipal[] = [
   },
   {
     archivo: "edificios.geojson",
-    nombre: "Edificación",
-    nota: "6.039 huellas de edificio con su altura",
+    nombre: "Edificación declarada",
+    nota: "6.039 huellas del área urbana, con la altura que declara OpenStreetMap",
     peso: "1,6 MB",
+    pesada: true,
+  },
+  /*
+   * La edificación del cantón entero, la misma que el visor extruye.
+   *
+   * Viaja como shapefile en zip y no como GeoJSON porque en GeoJSON son 50 MB
+   * que se quedarían para siempre en el historial del repositorio del visor;
+   * así son 12,7 MB. El lector la abre por la extensión, igual que si alguien
+   * la soltara desde el escritorio.
+   *
+   * NO ES LA CAPA DE TESELAS DEL VISOR, aunque salga del mismo script y del
+   * mismo dato. Las teselas vienen recortadas por el borde de cada cuadro: un
+   * edificio a caballo entre dos sale dos veces y con la mitad del área cada
+   * vez. Eso se puede pintar y no se puede contar, y aquí lo que se hace es
+   * contar, así que la capa entera viene con cada objeto completo.
+   *
+   * LA ALTURA NO ESTÁ MEDIDA. La estima un modelo sobre imágenes de 10 m, con
+   * un error típico de metro y medio a dos. Sirve para análisis por zonas y
+   * para priorizar inspecciones; no certifica los pisos de un predio. Por eso
+   * lo dice la nota, que es lo que se lee antes de traerla y lo que queda
+   * escrito en el origen de la capa.
+   */
+  {
+    archivo: "edificaciones_2023.zip",
+    nombre: "Edificación del cantón",
+    nota:
+      "166.530 edificaciones con altura ESTIMADA por modelo (±1,5–2 m), " +
+      "pisos, superficie y parroquia · Google Open Buildings 2023, CC BY 4.0",
+    peso: "12,7 MB",
     pesada: true,
   },
   {

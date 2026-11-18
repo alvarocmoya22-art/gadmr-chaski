@@ -207,12 +207,24 @@ otro origen sin intermediario.
 | Equipamientos | 1.083 equipamientos con tipo y estado | 430 KB |
 | Proyectos 2026 | 41 proyectos con monto, estado y tipología | 21 KB |
 | Vialidad | 17.636 tramos, 1.931 km | 2 MB |
-| Edificación | 6.039 huellas con su altura | 1,6 MB |
+| Edificación declarada | 6.039 huellas urbanas, altura de OpenStreetMap | 1,6 MB |
+| Edificación del cantón | 166.530 edificaciones, altura estimada y parroquia | 12,7 MB |
 | Catastro | 41.681 predios con clave y superficie | 15 MB |
 
 La vialidad llega como el grafo que el visor usa para las isócronas y se
 convierte a líneas al entrar. El catastro trae clave catastral y superficie;
 **el nombre del propietario no sale del visor ni entra aquí**.
+
+Las dos de edificación no son la misma capa contada dos veces. La **declarada**
+son 6.039 huellas del área urbana cuya altura alguien escribió en
+OpenStreetMap. La **del cantón** son las 166.530 que el visor extruye, con la
+altura **estimada por un modelo sobre imágenes de 10 m, con un error típico de
+metro y medio a dos**: sirve para análisis por zonas y para priorizar
+inspecciones, no para certificar los pisos de un predio. Es de Google Open
+Buildings 2023, CC BY 4.0, y llega como shapefile comprimido —el lector lo abre
+por la extensión, igual que si se soltara desde el escritorio—. En el visor esa
+misma capa va en teselas, que se recortan por cuadro y por eso sirven para
+pintarla y no para contarla; aquí vienen los objetos enteros.
 
 Esto es la forma barata de unir las dos mitades: el visor pone los datos de
 casa y CHASKI pone las herramientas, sin fusionar los dos programas ni tocar
