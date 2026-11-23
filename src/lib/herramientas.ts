@@ -7,6 +7,7 @@
  * sobre la capa que hay elegida.
  */
 import { ACCESIBILIDAD } from './herramientas/accesibilidad'
+import { HEATMAPS } from './herramientas/heatmaps'
 import { GEOPROCESO } from './herramientas/geoproceso'
 import { GEOANALISIS } from './herramientas/geoanalisis'
 import { DATOS } from './herramientas/datos'
@@ -14,6 +15,7 @@ import { CATEGORIAS, type Capa, type Herramienta } from './herramientas/tipos'
 
 export const HERRAMIENTAS: Herramienta[] = [
   ...ACCESIBILIDAD,
+  ...HEATMAPS,
   ...GEOPROCESO,
   ...GEOANALISIS,
   ...DATOS,

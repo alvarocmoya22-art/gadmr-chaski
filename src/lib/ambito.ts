@@ -31,7 +31,7 @@ export const CATEGORIA = 'capa'
  * parroquia entera no lo es, y por eso en pantalla se dice con qué se está
  * calculando en lugar de dejarlo implícito.
  */
-function representante(g: GeoJSON.Geometry): [number, number] | null {
+export function representante(g: GeoJSON.Geometry): [number, number] | null {
   if (g.type === 'Point') return g.coordinates as [number, number]
   if (g.type === 'MultiPoint') return (g.coordinates[0] ?? null) as [number, number] | null
   if (g.type === 'LineString') {

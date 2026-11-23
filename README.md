@@ -101,19 +101,48 @@ las coordenadas en UTM 17S, que reproyecta avisando de cuántas filas convirtió
 **Describe** cada capa: cuántos registros, de qué forma y qué campos trae, con
 cuántos valores distintos tiene cada uno.
 
-**Dieciséis herramientas**, repartidas en los cuatro grupos de GOAT. La columna
+**Veintidós herramientas**, repartidas en los cuatro grupos de GOAT. La columna
 «acepta» es lo que decide si una herramienta aparece o no al elegir una capa.
 
 ### Accesibilidad
 
-Se mide **en línea recta, no por la calle**. Es la diferencia honesta con GOAT,
-que rutea sobre la red vial y el transporte público. La línea recta siempre sale
-optimista, y cada resultado lo dice en su ficha.
+**Una rutea y las demás miden en línea recta**, y conviene saber cuál es cuál.
+Las isócronas recorren la red de calles con un Dijkstra y cobran la cuesta con
+la función de Tobler. Las otras cuatro miden sobre el elipsoide, que siempre
+sale optimista: en una trama cortada por el río o la quebrada, 400 m en recta
+son 700 caminando. Cada resultado lo dice en su ficha.
+
+No es pereza. Una isócrona recorre el grafo desde **un** origen; la gravedad y
+el 2SFCA necesitan la distancia de cada zona a cada equipamiento —cientos de
+miles de pares— y eso no se rutea en el navegador. Medirlas por la calle es el
+paso siguiente y cambia solo la función de distancia, no el indicador.
 
 | Herramienta | Acepta | Qué devuelve |
 |---|---|---|
+| Isócronas a pie | cualquiera | Hasta dónde se llega andando en N minutos, **por la calle y con la cuesta** |
 | Distancia al más cercano | cualquiera | Cada registro con la distancia a lo más próximo de otra capa |
 | Mapa de cercanía | cualquiera | Una rejilla que pinta a qué distancia queda lo más próximo |
+| Mapa de gravedad | cualquiera | Una rejilla que suma **todas** las oportunidades del entorno, pesadas por distancia |
+| Oferta por habitante (2SFCA) | cualquiera | Las zonas con la capacidad que les toca, repartida entre quienes se la disputan |
+
+Las dos últimas contestan lo que «distancia al más cercano» no sabe. La
+**gravedad** distingue un barrio con seis escuelas a 600 m de otro con una sola
+a 500: el primero está mejor servido y la distancia al más cercano los pinta al
+revés. El peso cae por media distancia —a 400 m una oportunidad vale la mitad,
+al doble la cuarta parte— porque «a 400 m vale la mitad» se puede defender ante
+una comisión y «beta = 0,0017» no.
+
+El **2SFCA** añade lo que ninguna de las otras mira: **cuánta gente se lo
+reparte**. Un centro de salud a 300 m del que dependen veinte mil personas no
+es accesibilidad, es una cola. Primero cada equipamiento divide su capacidad
+entre todos los habitantes que lo alcanzan; después cada zona suma lo que le
+toca de cada uno. El resultado va por mil habitantes, que es como la norma
+escribe estos ratios.
+
+Corrido sobre los 98 equipamientos de salud del inventario contra los 212
+barrios con el Censo 2022, a 800 m: **35 barrios sin ninguno al alcance y
+21.062 habitantes de 172.885 sin cobertura**, con una mediana de 0,374
+equipamientos por mil habitantes.
 
 ### Geoproceso
 
@@ -131,6 +160,8 @@ optimista, y cada resultado lo dice en su ficha.
 
 | Herramienta | Acepta | Qué devuelve |
 |---|---|---|
+| Avance en el tiempo | cualquiera | Cómo cambió mes a mes lo que trae una columna de fecha |
+| Población alcanzada | polígonos | Cuánta gente cae dentro de una zona, repartida por densidad |
 | Agregar puntos | cualquiera | Las zonas con cuántos, suma, media, mínimo, máximo o desviación |
 | Agregar polígonos | polígonos | Las zonas con la superficie y el porcentaje que ocupa la capa |
 | Kilómetros por zona | líneas | Las zonas con km y km/km² |
@@ -301,29 +332,46 @@ a un servicio inseguro.
 
 ## Lo que no está, y por qué
 
-De las 23 herramientas de GOAT faltan siete, todas por la misma razón: piden
-algo que hoy no hay.
+GOAT tiene hoy 24 herramientas en los cuatro grupos. **Geoproceso y datos están
+igualados, 7 de 7 y 2 de 2.** En geoanálisis van 3 de 5, y la diferencia entera
+está en accesibilidad, que es su especialidad: 5 de 9.
 
 | De GOAT | Qué haría falta |
 |---|---|
-| Catchment Area (isócronas) | La red vial de OSM y un Dijkstra. El visor ya los tiene resueltos |
-| Heatmap Connectivity | Lo mismo: red vial |
-| Heatmap Gravity · 2SFCA · Huff | Se pueden hacer en línea recta; faltan por tiempo, no por imposibilidad |
-| ÖV-Güteklassen · Trip Count | GTFS del transporte público, que Riobamba no publica |
-| Geocoding | Un servicio externo. Mandaría las direcciones fuera del navegador, que es justo lo que este desarrollo evita |
+| Heatmap Connectivity | Nada que no haya: cuánta superficie alcanza cada celda. Falta por tiempo |
+| Huff Model | Lo mismo: reparto de demanda entre equipamientos que compiten |
+| Travel Cost Matrix | «Distancia al más cercano» es media pieza; falta la matriz completa de pares |
+| ÖV-Güteklassen · Trip Count | GTFS del transporte público, que Riobamba no publica. No es trabajo, es un dato que no existe |
+| Geocoding | GOAT usa Pelias, un servicio externo. Mandaría las direcciones fuera del navegador, que es justo lo que este desarrollo evita. Con el índice de calles que ya prepara el visor se puede hacer aquí dentro |
 | Origin Destination | Una tabla de pares origen-destino que todavía no se puede cargar como tal |
 
-Y una que GOAT no trae y CHASKI sí: **puntos calientes de Getis-Ord**, que viene
-del visor de territorio.
+Y cinco que GOAT no trae y CHASKI sí: **puntos calientes de Getis-Ord**,
+**población alcanzada**, **avance en el tiempo**, **kilómetros por zona** y
+**superficie por clase**. Las tres primeras vienen del visor de territorio.
+
+### Y dos cosas que no se pueden copiar de GOAT
+
+**Su código es GPL-3.0.** Tomar sus ideas —la caja repartida en cuatro grupos,
+qué herramientas tiene cada uno— es libre y es lo que se ha hecho desde el
+principio. Copiar su código obligaría a que CHASKI fuera GPL-3.0 también, y eso
+es una decisión del municipio, no del programador.
+
+**Y GOAT es un servidor, no una página.** Next.js, FastAPI, PostgreSQL con
+PostGIS, Keycloak, Redis, almacenamiento S3 y un motor de trabajos. CHASKI es
+un sitio estático donde nada sale del navegador; igualarlo «tal cual» sería
+cambiar eso por una infraestructura que hoy no hay. Lo que sí se puede igualar,
+y es lo que se persigue, es **qué preguntas sabe contestar**.
 
 ## Lo que falta
 
 - **Apuntar a la base del GADM.** El lado de CHASKI está hecho y probado; falta
   levantar el servicio sobre el Postgres institucional y decidir qué tablas se
   publican.
-- **Filtrar una capa a una capa nueva.** Hoy el filtro por campo y valor actúa
-  dentro de cada herramienta, pero no deja una capa filtrada que se pueda usar
-  como destino de otra.
+- **Guardar el filtro como una capa nueva.** El filtro ya vive EN la capa —por
+  lista de valores, por tramo numérico o escribiendo una expresión como la de
+  QGIS— y viaja con ella a todas las herramientas y al mapa. Lo que falta es el
+  botón de GOAT: dejar el recorte como una capa aparte, para poder comparar la
+  filtrada con la entera en la misma mesa.
 - **Mesas con nombre.** Hoy hay una sola mesa, la de la última vez. Poder
   guardar varias con su nombre es el paso siguiente.
 
