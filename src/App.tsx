@@ -124,6 +124,15 @@ export default function App() {
   const [recados, setRecados] = useState<{ texto: string; mal: boolean }[]>([]);
   const [modo, setModo] = useState<Modo>("mirar");
   const [subModo, setSubModo] = useState<SubModo>("preguntas");
+  /*
+   * Si el panel está desplegado sobre el mapa.
+   *
+   * Con el mapa a sangre, el panel le tapa un tercio. Antes no hacía falta
+   * poder cerrarlo porque el mapa vivía al lado y nunca quedaba oculto; ahora
+   * sí, y es lo primero que uno busca cuando quiere mirar el resultado que
+   * acaba de salir.
+   */
+  const [panelAbierto, setPanelAbierto] = useState(true);
 
   // Bases de datos
   const [conexiones, setConexiones] = useState<Conexion[]>([]);
@@ -943,6 +952,49 @@ export default function App() {
     </button>
   );
 
+  /** Un botón del riel: solo icono, con el nombre en el título. */
+  const riel = (
+    titulo: string,
+    icono: string,
+    alPulsar: () => void,
+    activo: boolean,
+  ) => (
+    <button
+      type="button"
+      onClick={alPulsar}
+      title={titulo}
+      aria-label={titulo}
+      className={`flex h-8 w-8 items-center justify-center rounded text-[15px] leading-none ${
+        activo
+          ? "bg-[var(--gr-azul-500)] text-white"
+          : "text-[var(--gr-tinta-2)] hover:bg-[var(--gr-azul-100)]"
+      }`}
+    >
+      {icono}
+    </button>
+  );
+
+  /**
+   * Encuadra todo lo que hay cargado, no solo una capa.
+   *
+   * `cajaDeCapa` da la de una; aquí se unen las de todas las visibles. Con el
+   * mapa a sangre esto hace más falta que antes: el encuadre que trae una
+   * capa recién traída deja fuera lo que ya estaba.
+   */
+  const encuadrarTodo = useCallback(() => {
+    const cajas = capas
+      .filter((c) => c.visible !== false)
+      .map((c) => cajaDeCapa(c))
+      .filter((c): c is [number, number, number, number] => !!c);
+    if (cajas.length === 0) return;
+    setEncuadre([
+      Math.min(...cajas.map((c) => c[0])),
+      Math.min(...cajas.map((c) => c[1])),
+      Math.max(...cajas.map((c) => c[2])),
+      Math.max(...cajas.map((c) => c[3])),
+    ]);
+  }, [capas]);
+
   return (
     <>
       <div className="app-principal flex h-screen flex-col bg-[var(--gr-fondo)] text-[var(--gr-tinta)]">
@@ -977,8 +1029,26 @@ export default function App() {
           </nav>
         </header>
 
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-[23rem] shrink-0 space-y-4 overflow-y-auto border-r border-[var(--gr-linea)] bg-[var(--gr-fondo)] p-3">
+        {/*
+          EL MAPA OCUPA TODA LA VENTANA Y LO DEMÁS FLOTA ENCIMA.
+
+          Antes el mapa vivía en la mitad derecha, detrás de una columna opaca
+          que le robaba un tercio de ancho fijo lo necesitara o no. Es la
+          disposición de GOAT y no es un capricho suyo: en un programa de
+          territorio, lo que se mira es el mapa, y todo lo demás es aparato
+          para interrogarlo. Encajonarlo dice lo contrario.
+
+          A cambio hay que poder apartar el panel, porque ahora sí tapa. De
+          eso se encarga `panelAbierto` y el primer botón del riel.
+        */}
+        <div className="relative min-h-0 flex-1">
+          <aside
+            className={`absolute left-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] w-[23rem] flex-col gap-4 overflow-y-auto rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)]/95 p-3 shadow-2xl backdrop-blur-sm transition-[opacity,transform] ${
+              panelAbierto
+                ? "opacity-100"
+                : "pointer-events-none -translate-x-4 opacity-0"
+            }`}
+          >
             {/*
               La mesa de la última vez, ofrecida y no impuesta.
 
@@ -1237,7 +1307,36 @@ export default function App() {
             el modelo habla de unas capas que están ahí detrás, y cambiar de
             pantalla para armarlo obliga a recordar lo que se acaba de ver.
           */}
-          <main className="flex min-w-0 flex-1 flex-col">
+          {/*
+            El riel de iconos, pegado al borde del panel como en GOAT.
+
+            Las tres cosas que hace son cosas que CHASKI ya sabía hacer y que
+            estaban enterradas a distinta profundidad. No hay ningún botón de
+            adorno: un riel con iconos que no llevan a nada es peor que no
+            tener riel.
+          */}
+          <div className="absolute top-3 z-30 flex flex-col gap-1 rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-superficie)]/95 p-1 shadow-xl backdrop-blur-sm"
+            style={{ left: panelAbierto ? "24.5rem" : "0.75rem" }}
+          >
+            {riel(
+              panelAbierto ? "Ocultar el panel" : "Mostrar el panel",
+              panelAbierto ? "◧" : "▣",
+              () => setPanelAbierto((v) => !v),
+              false,
+            )}
+            {riel(
+              "Herramientas",
+              "⚒",
+              () => {
+                setModo("analizar");
+                setSubModo("herramientas");
+              },
+              modo === "analizar" && subModo === "herramientas",
+            )}
+            {riel("Encuadrar todo lo cargado", "⤢", encuadrarTodo, false)}
+          </div>
+
+          <main className="absolute inset-0 flex flex-col">
             <div className="min-h-0 flex-1">
               <Mapa
                 capas={preparadas}

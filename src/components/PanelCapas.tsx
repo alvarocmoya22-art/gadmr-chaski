@@ -8,6 +8,7 @@
  * porque sin eso nadie puede defenderlo en una mesa técnica.
  */
 import { useRef, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from "../lib/municipio";
 import type { ReactNode } from "react";
 import type { Capa } from "../lib/cargar";
@@ -441,6 +442,96 @@ export default function PanelCapas({
                   </button>
                 </div>
 
+                {/*
+                  ESTILO, FILTRO Y FICHA SE VAN A LA DERECHA.
+                  
+                  Estaban los tres desplegandose DENTRO de la tarjeta de la
+                  capa, en la columna de la izquierda. Eso empujaba hacia abajo
+                  todas las capas siguientes, asi que abrir el estilo de la
+                  primera escondia las otras seis; y la caja de filtro, que es
+                  alta, dejaba la lista inservible mientras estaba abierta.
+                  
+                  En la derecha no empujan nada, caben enteras y se leen al
+                  lado del mapa que estan cambiando, que es lo que uno mira
+                  mientras toca un color o un tramo. Es la disposicion de GOAT
+                  y la razon es esa, no el parecido.
+                  
+                  SE DIBUJA EN EL BODY, con un portal, y no donde esta
+                  escrita. Dos motivos, y el segundo costo encontrarlo: el
+                  panel de capas tiene `overflow-y-auto`, asi que un hijo suyo
+                  se recortaria al llegar a su borde; y tiene `backdrop-blur`,
+                  que convierte al panel en bloque contenedor de cualquier
+                  descendiente `fixed`. Con eso, `right-3` no media desde la
+                  ventana sino desde el panel, y la tarjeta aparecia pegada a
+                  la izquierda, encima de la lista. El portal la saca del
+                  arbol y las dos cosas dejan de pasar.
+                  
+                  Y por debajo de 1.000 px las dos tarjetas no caben a la vez
+                  —23 rem la de capas mas 21 rem esta—, asi que ahi esta se
+                  extiende de lado a lado y la tapa, que es lo que uno quiere
+                  mientras ajusta un estilo en una ventana estrecha.
+                */}
+                {(pintando === c.id || filtrando === c.id || fichaAbierta) &&
+                  createPortal(
+                  <div className="fixed right-3 top-[4.2rem] z-30 flex max-h-[calc(100vh-5.5rem)] w-[21rem] flex-col overflow-hidden rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)]/95 shadow-2xl backdrop-blur-sm max-[1000px]:left-3 max-[1000px]:w-auto">
+                    <div className="flex items-center gap-2 border-b border-[var(--gr-linea)] px-2.5 py-2">
+                      <span
+                        className="h-3 w-3 shrink-0 rounded-sm"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      <span className="truncate text-sm font-semibold text-[var(--gr-tinta)]">
+                        {c.nombre}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Cerrar"
+                        onClick={() => {
+                          setPintando("");
+                          setFiltrando("");
+                          setAbierta("");
+                        }}
+                        className="ml-auto rounded px-1 text-[var(--gr-tinta-3)] hover:bg-[var(--gr-azul-100)] hover:text-[var(--gr-tinta)]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex border-b border-[var(--gr-linea)]">
+                      {(
+                        [
+                          ["estilo", "Estilo"],
+                          ["filtro", "Filtro"],
+                          ["ficha", "Ficha"],
+                        ] as const
+                      ).map(([clave, rotulo]) => {
+                        const activa =
+                          clave === "estilo"
+                            ? pintando === c.id
+                            : clave === "filtro"
+                              ? filtrando === c.id
+                              : fichaAbierta;
+                        return (
+                          <button
+                            key={clave}
+                            type="button"
+                            onClick={() => {
+                              setPintando(clave === "estilo" ? c.id : "");
+                              setFiltrando(clave === "filtro" ? c.id : "");
+                              setAbierta(clave === "ficha" ? c.id : "");
+                            }}
+                            className={`flex-1 border-b-2 px-2 py-1.5 text-[11px] uppercase tracking-wide ${
+                              activa
+                                ? "border-[var(--gr-azul-500)] font-semibold text-[var(--gr-azul-500)]"
+                                : "border-transparent text-[var(--gr-tinta-3)] hover:text-[var(--gr-tinta)]"
+                            }`}
+                          >
+                            {rotulo}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="overflow-y-auto p-2.5">
                 {pintando === c.id && (
                   <CajaEstilo
                     capa={c}
@@ -458,7 +549,7 @@ export default function PanelCapas({
                 )}
 
                 {fichaAbierta && (
-                  <div className="mt-1.5 space-y-1.5 border-t border-[var(--gr-linea)] pt-1.5">
+                  <div className="space-y-1.5">
                     {c.resumen && c.resumen.length > 0 && (
                       <table className="w-full text-xs">
                         <tbody>
@@ -563,6 +654,10 @@ export default function PanelCapas({
                       Origen: {c.origen}
                     </p>
                   </div>
+                )}
+                    </div>
+                  </div>,
+                  document.body,
                 )}
               </li>
             );

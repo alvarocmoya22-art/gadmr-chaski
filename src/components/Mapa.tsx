@@ -215,9 +215,16 @@ export default function Mapa({
         }),
       },
     });
+    /*
+     * Abajo a la derecha, donde los pone GOAT y casi cualquier visor.
+     *
+     * Arriba a la derecha chocaban con el panel de estilo y filtro, que es el
+     * que se abre al elegir una capa; y el mapa ahora llega hasta el borde,
+     * así que esa esquina es justo la que tapa ese panel.
+     */
     m.addControl(
       new maplibregl.NavigationControl({ visualizePitch: true }),
-      "top-right",
+      "bottom-right",
     );
     m.addControl(
       new maplibregl.ScaleControl({ unit: "metric" }),
@@ -572,32 +579,62 @@ export default function Mapa({
   }, [encuadre, listo]);
 
   const base = MAPAS_BASE.find((b) => b.clave === mapaBase);
+  const [abierto, setAbierto] = useState(false);
 
   return (
     <div className="relative h-full w-full">
       <div ref={div} className="h-full w-full" />
-      <div className="absolute left-3 top-3 flex flex-wrap gap-1 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1 shadow-sm">
-        {MAPAS_BASE.map((b) => (
-          <button
-            key={b.clave}
-            type="button"
-            onClick={() => onMapaBase(b.clave)}
-            title={b.nota}
-            className={`rounded px-2 py-1 text-xs ${
-              b.clave === mapaBase
-                ? "bg-[var(--gr-azul-500)] font-semibold text-white"
-                : "text-[var(--gr-tinta-2)] hover:bg-[var(--gr-azul-100)]"
-            }`}
-          >
-            {b.rotulo}
-          </button>
-        ))}
+
+      {/*
+        EL MAPA BASE, EN UN BOTÓN Y NO EN UNA FILA DE NOMBRES.
+
+        Eran seis botones con su rótulo ocupando el borde superior del mapa,
+        que es el sitio por el que uno empieza a mirar. Se eligen una vez por
+        sesión y luego estorban todo el rato. Así se comporta como en GOAT: un
+        icono abajo a la derecha, con los controles de zoom, y la lista se
+        despliega al pulsarlo.
+      */}
+      <div className="absolute bottom-[6.5rem] right-[0.6rem] z-10">
+        {abierto && (
+          <div className="absolute bottom-10 right-0 w-56 overflow-hidden rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-superficie)] shadow-2xl">
+            {MAPAS_BASE.map((b) => (
+              <button
+                key={b.clave}
+                type="button"
+                onClick={() => {
+                  onMapaBase(b.clave);
+                  setAbierto(false);
+                }}
+                className={`block w-full px-2.5 py-1.5 text-left text-xs ${
+                  b.clave === mapaBase
+                    ? "bg-[var(--gr-azul-500)] font-semibold text-white"
+                    : "text-[var(--gr-tinta-2)] hover:bg-[var(--gr-azul-100)]"
+                }`}
+              >
+                <span className="block">{b.rotulo}</span>
+                <span
+                  className={`block text-[10px] leading-snug ${
+                    b.clave === mapaBase
+                      ? "text-white/80"
+                      : "text-[var(--gr-tinta-3)]"
+                  }`}
+                >
+                  {b.nota}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => !v)}
+          title={base ? `Mapa base: ${base.rotulo}` : "Mapa base"}
+          aria-label="Mapa base"
+          className="flex h-[29px] w-[29px] items-center justify-center rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] text-[13px] text-[var(--gr-tinta-2)] shadow hover:bg-[var(--gr-azul-100)]"
+        >
+          ▦
+        </button>
       </div>
-      {base && (
-        <p className="pointer-events-none absolute bottom-10 left-3 max-w-xs text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-          {base.nota}
-        </p>
-      )}
     </div>
   );
 }
