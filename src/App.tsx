@@ -1264,7 +1264,7 @@ export default function App() {
               {modo === "analizar" && (
                 <>
                   <div className="mb-2 flex gap-1 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1">
-                    {sub("preguntas", "Preguntas")}
+                    {sub("preguntas", "Asistente")}
                     {sub("herramientas", "Herramientas")}
                   </div>
                   {subModo === "preguntas" ? (

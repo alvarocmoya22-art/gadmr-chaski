@@ -7,8 +7,17 @@
  * Quien lo rellena está leyendo lo que va a pasar mientras lo elige, así que no
  * hace falta saber cuál es la capa de entrada y cuál la de zonas: lo dice la
  * frase.
+ *
+ * Y encima de todo está el asistente: se escribe la pregunta y él elige la
+ * receta y rellena los huecos. No reemplaza a la frase, la RELLENA — lo que
+ * propone acaba en los mismos desplegables, donde se ve entero y se puede
+ * corregir antes de correr. Un asistente que ejecuta sin enseñar lo que
+ * entendió es un generador de cifras que nadie revisó; `lib/asistente.ts`
+ * explica por qué además no lleva modelo de lenguaje dentro.
  */
+import { useMemo, useState } from "react";
 import type { Capa } from "../lib/cargar";
+import { ejemplos, interpretar } from "../lib/asistente";
 import {
   ENTRADA,
   RECETAS,
@@ -54,6 +63,23 @@ export default function PanelGuiado({
   error,
   onSugerencia,
 }: Props) {
+  /*
+   * Lo escrito y lo que se entendio.
+   *
+   * `escrito` es lo que hay en la caja y `lectura` lo que se interpreto al
+   * pulsar. Son dos estados y no uno a proposito: interpretar en cada tecla
+   * haria bailar la propuesta mientras se escribe, y lo que se propone acaba
+   * rellenando la frase de abajo. Que cambie sola mientras uno teclea es la
+   * forma mas rapida de correr algo que no se queria.
+   */
+  const [escrito, setEscrito] = useState("");
+  const [buscado, setBuscado] = useState("");
+  const lecturas = useMemo(
+    () => (buscado.trim() ? interpretar(buscado, capas) : []),
+    [buscado, capas],
+  );
+  const pistas = useMemo(() => ejemplos(capas), [capas]);
+
   if (capas.length === 0) {
     return (
       <p className="text-xs leading-relaxed text-[var(--gr-tinta-3)]">
@@ -248,6 +274,106 @@ export default function PanelGuiado({
 
   return (
     <section className="space-y-2">
+      {/*
+        EL ASISTENTE.
+
+        Lo que escribe el usuario no se manda a ningun sitio: se compara con
+        las doce recetas y con los nombres, columnas y valores de sus propias
+        capas. De ahi que pueda decir POR QUE eligio cada cosa, que es lo que
+        permite ver el error antes de correr y no despues de publicar.
+      */}
+      <form
+        className="rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setBuscado(escrito);
+        }}
+      >
+        <label className="mb-1 block text-xs font-bold text-[var(--gr-tinta)]">
+          Escribe lo que quieres saber
+        </label>
+        <div className="flex gap-1">
+          <input
+            value={escrito}
+            onChange={(e) => setEscrito(e.target.value)}
+            placeholder={pistas[0] ?? "¿Cuántos hay en cada zona?"}
+            className="min-w-0 flex-1 rounded border border-[var(--gr-linea)] bg-[var(--gr-fondo)] px-2 py-1.5 text-sm text-[var(--gr-tinta)]"
+          />
+          <button
+            type="submit"
+            className="rounded bg-[var(--gr-azul-500)] px-2.5 text-sm font-semibold text-white"
+          >
+            Entender
+          </button>
+        </div>
+
+        {buscado.trim() !== "" && lecturas.length === 0 && (
+          <p className="mt-1.5 text-[11px] leading-snug text-[var(--gr-aviso)]">
+            No reconozco esa pregunta. Entiendo las doce de abajo, dichas de
+            muchas maneras; si la tuya es una de ellas con otras palabras,
+            dímelo y la añado al vocabulario.
+          </p>
+        )}
+
+        {lecturas.length > 0 && (
+          <div className="mt-2 space-y-1.5">
+            {lecturas.map((l, i) => (
+              <button
+                key={l.receta.clave}
+                type="button"
+                onClick={() => onSugerencia(l.receta.clave, l.valores)}
+                className={`block w-full rounded border p-1.5 text-left ${
+                  i === 0
+                    ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]"
+                    : "border-[var(--gr-linea)] hover:border-[var(--gr-azul-500)]"
+                }`}
+              >
+                <span className="block text-[11px] uppercase tracking-wide text-[var(--gr-tinta-3)]">
+                  {i === 0 ? "Entendí" : "O quizá"}
+                </span>
+                <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
+                  {l.receta.pregunta}
+                </span>
+                {l.porque.length > 0 && (
+                  <span className="block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                    {l.porque.join(" · ")}
+                  </span>
+                )}
+                {l.faltan.length > 0 && (
+                  <span className="block text-[11px] leading-snug text-[var(--gr-aviso)]">
+                    Falta elegir: {l.faltan.map((h) => h.pista).join(", ")}
+                  </span>
+                )}
+              </button>
+            ))}
+            <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+              Pulsa una y la frase de abajo queda rellena. Nada se corre hasta
+              que lo digas, y todo esto se resuelve en tu navegador: no se
+              consulta ningún modelo ni sale una palabra de aquí.
+            </p>
+          </div>
+        )}
+
+        {buscado.trim() === "" && pistas.length > 1 && (
+          <ul className="mt-1.5 flex flex-wrap gap-1">
+            {pistas.map((p) => (
+              <li key={p}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEscrito(p);
+                    setBuscado(p);
+                  }}
+                  className="rounded border border-[var(--gr-linea)] px-1.5 py-0.5 text-[11px] text-[var(--gr-tinta-3)] hover:border-[var(--gr-azul-500)] hover:text-[var(--gr-azul-texto)]"
+                >
+                  {p}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </form>
+
       {sugeridas.length > 0 && (
         <div className="rounded-md border border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)] p-2">
           <p className="mb-1.5 text-xs font-bold text-[var(--gr-tinta)]">
