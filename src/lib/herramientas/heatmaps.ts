@@ -51,6 +51,13 @@ import {
   type Fila,
   type Herramienta,
 } from './tipos'
+import {
+  IndiceNodos,
+  VELOCIDAD_KMH,
+  calcularIsocrona,
+  construirRed,
+} from '../red'
+import { ALCANCE_FUERA_DE_CALLE_M } from '../isocronaSuperficie'
 
 /**
  * Tope de parejas que se consienten.
@@ -470,6 +477,402 @@ export const HEATMAPS: Herramienta[] = [
             (aislados > 0 ? `, de los que ${numero(aislados)} no tienen a nadie dentro del alcance y no reparten nada` : '') +
             `. En línea recta, no por la calle: el alcance real caminando siempre es menor.`,
         }),
+        puntos: oferta,
+      }
+    },
+  },
+  {
+    clave: 'heatmap-conectividad',
+    categoria: 'accesibilidad',
+    nombre: 'Conectividad de la trama',
+    nota: 'Cuánta calle y cuánto suelo se alcanzan andando N minutos desde cada punto, POR LA RED. Mide la trama, no la distancia: dos esquinas a cien metros una de otra pueden alcanzar el doble o la mitad según cómo esté cosido el barrio.',
+    acepta: ['punto', 'linea', 'poligono', 'mixta'],
+    avisoRepresentante: true,
+    parametros: [
+      {
+        tipo: 'capa',
+        clave: 'red',
+        rotulo: 'Red por la que se camina',
+        formas: ['linea'],
+        nota: 'La vialidad, o cualquier capa de líneas. Dos tramos se conectan si comparten un vértice.',
+      },
+      {
+        tipo: 'numero',
+        clave: 'minutos',
+        rotulo: 'Tiempo de caminata',
+        defecto: 10,
+        min: 1,
+        max: 60,
+        paso: 1,
+        unidad: 'min',
+      },
+      {
+        tipo: 'numero',
+        clave: 'velocidad',
+        rotulo: 'Velocidad',
+        defecto: VELOCIDAD_KMH,
+        min: 1,
+        max: 30,
+        paso: 0.5,
+        unidad: 'km/h',
+        nota: 'La caminata normal en llano son 4,5 km/h. Aquí no se cobra la cuesta: una capa de líneas no trae altitud.',
+      },
+      ...FILTRO,
+    ],
+    correr(ctx) {
+      const origenes = registrosDe(ctx)
+      if (origenes.length === 0) return { error: 'Con este filtro no entra ningún registro.' }
+
+      const capaRed = capaDe(ctx, 'red')
+      if (!capaRed) return { error: 'Falta la capa de líneas por la que se camina.' }
+
+      /*
+       * EL TOPE ES POR ORIGEN Y NO POR PAREJAS, porque aqui el coste no es un
+       * producto: es un Dijkstra entero sobre la red POR CADA ORIGEN. La
+       * isocrona normal mete todos los origenes en la misma carrera, que es
+       * lo correcto cuando se pregunta «cuanto falta hasta el mas cercano»;
+       * aqui la pregunta es otra —que alcanza CADA UNO— y no se comparte.
+       */
+      const TOPE_ORIGENES = 400
+      if (origenes.length > TOPE_ORIGENES) {
+        return {
+          error: `Son ${numero(origenes.length)} orígenes y cada uno pide recorrer la red entera. Filtra hasta ${numero(TOPE_ORIGENES)} o menos.`,
+        }
+      }
+
+      const red = construirRed(capaRed)
+      if (red.aristas.length === 0) return { error: `«${capaRed.nombre}» no trae líneas.` }
+      const indice = new IndiceNodos(red.nodos)
+      const minutos = numeroDe(ctx, 'minutos', 10)
+      const velocidad = numeroDe(ctx, 'velocidad', VELOCIDAD_KMH)
+
+      /*
+       * El area alcanzada se cuenta con una rejilla, no con una formula.
+       *
+       * Multiplicar los metros de calle por el doble del alcance a pie daria
+       * de mas: en una trama cerrada las franjas de calles paralelas se
+       * solapan, y en el centro de Riobamba, con manzanas de ochenta metros y
+       * un alcance de ciento veinte, se solapan casi del todo. La rejilla
+       * cuenta cada trozo de suelo una sola vez, que es lo que significa
+       * «area alcanzada».
+       */
+      const LADO = 20
+      const plano = planoLocal(origenes[0].lon, origenes[0].lat)
+      const radio = Math.ceil(ALCANCE_FUERA_DE_CALLE_M / LADO)
+      const areaCelda = (LADO * LADO) / 10_000
+
+      const rasgos: GeoJSON.Feature[] = []
+      const kms: number[] = []
+      let sueltos = 0
+      for (const o of origenes) {
+        const iso = calcularIsocrona(
+          red,
+          [{ lon: o.lon, lat: o.lat }],
+          minutos,
+          velocidad,
+          indice,
+        )
+        if (iso.sueltos > 0) sueltos++
+
+        /*
+         * SE CUENTA TAMBIEN EL TROZO DE CALLE QUE SI DA TIEMPO A RECORRER.
+         *
+         * `alcanzables` solo trae las aristas alcanzadas ENTERAS, que es lo
+         * que necesita una isocrona dibujada por tramos. Aqui no sirve: con
+         * una capa de manzanas enteras —aristas de trescientos metros— y dos
+         * minutos de presupuesto no se completa ninguna, y la herramienta
+         * contestaba cero kilometros. Cero es falso: se anda ciento cincuenta
+         * metros por cada brazo.
+         *
+         * Asi que se recorren TODAS las aristas y de cada una se cuenta lo
+         * que alcanza el presupuesto sobrante en sus dos extremos. Si entre
+         * los dos cubren la arista, se cuenta entera.
+         */
+        const porMinuto = (velocidad * 1000) / 60
+        let metros = 0
+        const celdas = new Set<number>()
+
+        /** Moja la rejilla a lo largo de un trazado, desde un extremo. */
+        const mojar = (trazado: number[][], desdeElFinal: boolean, metrosMax: number) => {
+          if (metrosMax <= 0) return
+          const puntos = desdeElFinal ? [...trazado].reverse() : trazado
+          let anduvo = 0
+          for (let k = 0; k < puntos.length - 1 && anduvo < metrosMax; k++) {
+            const [lon1, lat1] = puntos[k]
+            const [lon2, lat2] = puntos[k + 1]
+            const largo = distanciaGeo(lon1, lat1, lon2, lat2)
+            if (largo === 0) continue
+            const hasta = Math.min(1, (metrosMax - anduvo) / largo)
+            // Una muestra cada medio lado de celda: con una por vertice, un
+            // tramo recto de doscientos metros solo mojaria sus dos puntas.
+            const pasos = Math.max(1, Math.ceil((largo * hasta) / (LADO / 2)))
+            for (let s = 0; s <= pasos; s++) {
+              const f = (s / pasos) * hasta
+              const [x, y] = plano.aMetros(
+                lon1 + (lon2 - lon1) * f,
+                lat1 + (lat2 - lat1) * f,
+              )
+              const cx = Math.round(x / LADO)
+              const cy = Math.round(y / LADO)
+              for (let dx = -radio; dx <= radio; dx++) {
+                for (let dy = -radio; dy <= radio; dy++) {
+                  if (dx * dx + dy * dy > radio * radio) continue
+                  // Clave entera: un Set de cadenas aqui cuesta el triple.
+                  celdas.add((cx + dx) * 100000 + (cy + dy))
+                }
+              }
+            }
+            anduvo += largo
+          }
+        }
+
+        for (let a = 0; a < red.aristas.length; a++) {
+          const [u, v, largo] = red.aristas[a]
+          const desdeU = Math.max(0, minutos - iso.minutos[u]) * porMinuto
+          const desdeV = Math.max(0, minutos - iso.minutos[v]) * porMinuto
+          if (desdeU <= 0 && desdeV <= 0) continue
+          metros += Math.min(largo, desdeU + desdeV)
+          const trazado = red.trazados[a]
+          if (desdeU + desdeV >= largo) {
+            mojar(trazado, false, largo)
+          } else {
+            mojar(trazado, false, desdeU)
+            mojar(trazado, true, desdeV)
+          }
+        }
+
+        const km = metros / 1000
+        kms.push(km)
+        rasgos.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [o.lon, o.lat] },
+          properties: conCalculados(o.props, {
+            alcance_km: Math.round(km * 100) / 100,
+            alcance_ha: Math.round(celdas.size * areaCelda * 10) / 10,
+            tramos_enteros: iso.alcanzables.length,
+          }),
+        })
+      }
+
+      const ordenadas = [...kms].sort((a, b) => a - b)
+      const resumen: Fila[] = [
+        { etiqueta: 'Puntos medidos', valor: numero(rasgos.length) },
+        {
+          etiqueta: `Calle alcanzable en ${numero(minutos)} min, mediana`,
+          valor: `${cifraLeyenda(ordenadas[Math.floor(ordenadas.length / 2)])} km`,
+        },
+        {
+          etiqueta: 'El mejor conectado',
+          valor: `${cifraLeyenda(ordenadas[ordenadas.length - 1])} km`,
+        },
+        { etiqueta: 'El peor', valor: `${cifraLeyenda(ordenadas[0])} km` },
+      ]
+      if (sueltos > 0) {
+        resumen.push({ etiqueta: 'Sin ninguna calle cerca', valor: numero(sueltos) })
+      }
+      if (red.mayorPieza < red.nodos.length * 0.9) {
+        resumen.push({
+          etiqueta: 'Aviso: la red está partida',
+          valor: `la pieza mayor tiene ${numero(red.mayorPieza)} de ${numero(red.nodos.length)} nodos`,
+        })
+      }
+
+      const { nombre, origen } = tituloDe(ctx, 'Conectividad')
+      return {
+        capa: capaDerivada(
+          nombre,
+          origen,
+          { type: 'FeatureCollection', features: rasgos },
+          {
+            tema: temaEscala(kms, 'alcance_km', 'km', 'Sin color: puntos que no engancharon con la red.'),
+            resumen,
+            metodo:
+              `Desde cada punto se recorre «${capaRed.nombre}» con un Dijkstra de ${numero(minutos)} min a ${cifraLeyenda(velocidad)} km/h. ` +
+              `«alcance_km» son los kilómetros de calle a los que se llega; «alcance_ha», el suelo que queda a menos de ${numero(ALCANCE_FUERA_DE_CALLE_M)} m de alguna de esas calles, contado sobre una rejilla de ${numero(LADO)} m para no sumar dos veces lo que se solapa. ` +
+              `Mide la TRAMA y no la distancia: dos puntos vecinos pueden alcanzar el doble o la mitad según cómo esté cosido el barrio. ` +
+              `No se cobra la cuesta, porque una capa de líneas no trae altitud.`,
+          },
+        ),
+        puntos: origenes,
+      }
+    },
+  },
+
+  {
+    clave: 'huff',
+    categoria: 'accesibilidad',
+    nombre: 'Reparto de la demanda (Huff)',
+    nota: 'Cuánta gente le toca a cada equipamiento cuando varios compiten por la misma población. No se la asigna entera al más cercano: la reparte según lo grande y lo cerca que esté cada uno, que es como se elige de verdad.',
+    acepta: ['punto', 'linea', 'poligono', 'mixta'],
+    avisoRepresentante: true,
+    parametros: [
+      {
+        tipo: 'capa',
+        clave: 'demanda',
+        rotulo: 'Zonas con población',
+        formas: ['punto', 'linea', 'poligono', 'mixta'],
+        nota: 'Barrios, manzanas o sectores con sus habitantes. Es la demanda que se reparte.',
+      },
+      {
+        tipo: 'campo',
+        clave: 'poblacion',
+        rotulo: 'Habitantes',
+        numerico: true,
+        deCapa: 'demanda',
+      },
+      {
+        tipo: 'campo',
+        clave: 'atractivo',
+        rotulo: 'Tamaño del equipamiento',
+        opcional: true,
+        numerico: true,
+        vacio: 'Todos igual de grandes',
+        nota: 'Aulas, camas, metros cuadrados. Es lo que hace que uno atraiga más que otro a igual distancia.',
+      },
+      {
+        tipo: 'numero',
+        clave: 'beta',
+        rotulo: 'Cuánto pesa la distancia',
+        defecto: 2,
+        min: 0.5,
+        max: 4,
+        paso: 0.5,
+        nota: 'El exponente del modelo. Con 1 la distancia apenas cuenta; con 2 —lo habitual— el doble de lejos atrae la cuarta parte; con 3 casi solo cuenta lo que está al lado.',
+      },
+      {
+        tipo: 'numero',
+        clave: 'tope',
+        rotulo: 'Dejar de competir más allá de',
+        defecto: 5000,
+        min: 200,
+        max: 30000,
+        paso: 100,
+        unidad: 'm',
+      },
+      ...FILTRO,
+    ],
+    correr(ctx) {
+      const oferta = registrosDe(ctx)
+      if (oferta.length === 0) return { error: 'Con este filtro no entra ningún equipamiento.' }
+
+      const capaDemanda = capaDe(ctx, 'demanda')
+      if (!capaDemanda) return { error: 'Falta la capa de zonas con población.' }
+      const campoPob = ctx.valores.poblacion || ''
+      if (!campoPob) return { error: 'Falta decir qué columna trae los habitantes.' }
+
+      const zonas = conPunto(capaDemanda.geo)
+      if (zonas.length === 0) return { error: `«${capaDemanda.nombre}» no trae geometría.` }
+      if (zonas.length * oferta.length > TOPE_PAREJAS) {
+        return { error: 'Son demasiadas cuentas: filtra los equipamientos o usa zonas más grandes.' }
+      }
+
+      const campoAtr = ctx.valores.atractivo || ''
+      const atractivo = oferta.map((o) => {
+        if (!campoAtr) return 1
+        const a = num(o.props, campoAtr)
+        return Number.isFinite(a) && a > 0 ? a : 0
+      })
+      const sinAtr = campoAtr ? atractivo.filter((a) => a === 0).length : 0
+      if (campoAtr && sinAtr === atractivo.length) {
+        return { error: `Ningún equipamiento trae un número positivo en «${campoAtr}».` }
+      }
+
+      const beta = numeroDe(ctx, 'beta', 2)
+      const tope = numeroDe(ctx, 'tope', 5000)
+
+      const captura = new Array<number>(oferta.length).fill(0)
+      let repartida = 0
+      let huerfana = 0
+      for (let i = 0; i < zonas.length; i++) {
+        const p = num(zonas[i].props, campoPob)
+        if (!Number.isFinite(p) || p <= 0) continue
+
+        /*
+         * El suelo de diez metros en la distancia no es un capricho.
+         *
+         * La utilidad es A / d^beta, y una zona cuyo punto representante cae
+         * ENCIMA de un equipamiento da d = 0 y utilidad infinita: ese se
+         * llevaria el cien por cien de la zona y los demas cero. Pasa de
+         * verdad en cuanto la demanda son manzanas pequeñas. Diez metros es
+         * menos que el error de cualquiera de las dos geometrias.
+         */
+        const utilidades: number[] = []
+        let suma = 0
+        for (let j = 0; j < oferta.length; j++) {
+          if (atractivo[j] === 0) {
+            utilidades.push(0)
+            continue
+          }
+          const d = distanciaGeo(zonas[i].lon, zonas[i].lat, oferta[j].lon, oferta[j].lat)
+          if (d > tope) {
+            utilidades.push(0)
+            continue
+          }
+          const u = atractivo[j] / Math.pow(Math.max(d, 10), beta)
+          utilidades.push(u)
+          suma += u
+        }
+        if (suma === 0) {
+          // Nadie dentro del tope: esa poblacion no se reparte, y se dice.
+          huerfana += p
+          continue
+        }
+        repartida += p
+        for (let j = 0; j < oferta.length; j++) {
+          if (utilidades[j] > 0) captura[j] += (p * utilidades[j]) / suma
+        }
+      }
+
+      const total = repartida + huerfana
+      const rasgos: GeoJSON.Feature[] = oferta.map((o, j) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [o.lon, o.lat] },
+        properties: conCalculados(o.props, {
+          captura_hab: Math.round(captura[j]),
+          captura_pct: total > 0 ? Math.round((captura[j] / total) * 1000) / 10 : 0,
+        }),
+      }))
+
+      const orden = [...captura].sort((a, b) => a - b)
+      const resumen: Fila[] = [
+        { etiqueta: 'Equipamientos', valor: numero(oferta.length) },
+        { etiqueta: 'Población repartida', valor: numero(Math.round(repartida)) },
+        {
+          etiqueta: 'Mediana por equipamiento',
+          valor: `${numero(Math.round(orden[Math.floor(orden.length / 2)]))} hab`,
+        },
+        {
+          etiqueta: 'El más cargado',
+          valor: `${numero(Math.round(orden[orden.length - 1]))} hab`,
+        },
+      ]
+      if (huerfana > 0) {
+        resumen.push({
+          etiqueta: `Población sin ninguno a ${numero(tope)} m`,
+          valor: numero(Math.round(huerfana)),
+        })
+      }
+      if (sinAtr > 0) {
+        resumen.push({ etiqueta: `Sin número en «${campoAtr}»`, valor: numero(sinAtr) })
+      }
+
+      const { nombre, origen } = tituloDe(ctx, 'Reparto de la demanda')
+      return {
+        capa: capaDerivada(
+          nombre,
+          origen,
+          { type: 'FeatureCollection', features: rasgos },
+          {
+            tema: temaEscala(captura, 'captura_hab', 'hab', 'Sin color: equipamientos que no captan a nadie.'),
+            resumen,
+            metodo:
+              `Modelo de Huff: cada zona reparte sus habitantes entre los equipamientos a menos de ${numero(tope)} m, en proporción a ${campoAtr ? `«${campoAtr}»` : 'su tamaño'} dividido por la distancia elevada a ${cifraLeyenda(beta)}. ` +
+              `Con ese exponente, uno que esté al doble de lejos atrae ${cifraLeyenda(Math.pow(2, beta))} veces menos. ` +
+              `No se asigna la zona entera al más cercano, porque la gente tampoco lo hace. ` +
+              `Población de «${campoPob}» en ${capaDemanda.nombre}. ` +
+              `En línea recta, no por la calle.`,
+          },
+        ),
         puntos: oferta,
       }
     },

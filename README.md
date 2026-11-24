@@ -101,7 +101,7 @@ las coordenadas en UTM 17S, que reproyecta avisando de cuántas filas convirtió
 **Describe** cada capa: cuántos registros, de qué forma y qué campos trae, con
 cuántos valores distintos tiene cada uno.
 
-**Veintidós herramientas**, repartidas en los cuatro grupos de GOAT. La columna
+**Veinticuatro herramientas**, repartidas en los cuatro grupos de GOAT. La columna
 «acepta» es lo que decide si una herramienta aparece o no al elegir una capa.
 
 ### Accesibilidad
@@ -124,6 +124,8 @@ paso siguiente y cambia solo la función de distancia, no el indicador.
 | Mapa de cercanía | cualquiera | Una rejilla que pinta a qué distancia queda lo más próximo |
 | Mapa de gravedad | cualquiera | Una rejilla que suma **todas** las oportunidades del entorno, pesadas por distancia |
 | Oferta por habitante (2SFCA) | cualquiera | Las zonas con la capacidad que les toca, repartida entre quienes se la disputan |
+| Conectividad de la trama | cualquiera | Cuánta calle y cuánto suelo alcanza cada punto andando N minutos, **por la red** |
+| Reparto de la demanda (Huff) | cualquiera | Cuánta gente capta cada equipamiento cuando varios compiten por la misma población |
 
 Las dos últimas contestan lo que «distancia al más cercano» no sabe. La
 **gravedad** distingue un barrio con seis escuelas a 600 m de otro con una sola
@@ -143,6 +145,32 @@ Corrido sobre los 98 equipamientos de salud del inventario contra los 212
 barrios con el Censo 2022, a 800 m: **35 barrios sin ninguno al alcance y
 21.062 habitantes de 172.885 sin cobertura**, con una mediana de 0,374
 equipamientos por mil habitantes.
+
+La **conectividad** es la única de las cinco que rutea, y es la única que
+puede: mide la TRAMA. Desde cada punto recorre la red N minutos y contesta
+cuántos kilómetros de calle alcanza y cuánto suelo queda a menos de 120 m de
+alguna de ellas. Dos esquinas a cien metros una de otra pueden alcanzar el
+doble o la mitad según cómo esté cosido el barrio, y eso ninguna medida en
+línea recta lo ve. El área se cuenta sobre una rejilla de 20 m y no con una
+fórmula: multiplicar los metros de calle por el ancho alcanzable daría de más,
+porque en una trama cerrada las franjas de calles paralelas se solapan casi
+del todo.
+
+Cuenta también **el trozo de calle que da tiempo a recorrer**, no solo las
+aristas alcanzadas enteras. Con una capa de tramos largos y dos minutos de
+presupuesto no se completa ninguno, y la primera versión contestaba cero
+kilómetros: falso, porque se andan ciento cincuenta metros por cada brazo.
+
+El **Huff** contesta la otra mitad de la pregunta del 2SFCA: no cuánta oferta
+le toca a cada zona, sino **cuánta gente le toca a cada equipamiento**. Y no
+se la asigna entera al más cercano —la gente tampoco lo hace—: la reparte
+según lo grande y lo cerca que esté cada uno. Con el exponente en 2, uno que
+esté al doble de lejos atrae la cuarta parte.
+
+Sobre los 196 equipamientos de educación contra los mismos barrios: **mediana
+de 753 habitantes por equipamiento y 2.836 el más cargado**. La suma de lo
+repartido da 172.887 frente a los 172.885 del censo, dos de diferencia por
+redondear cada equipamiento a entero.
 
 ### Geoproceso
 
@@ -333,13 +361,11 @@ a un servicio inseguro.
 ## Lo que no está, y por qué
 
 GOAT tiene hoy 24 herramientas en los cuatro grupos. **Geoproceso y datos están
-igualados, 7 de 7 y 2 de 2.** En geoanálisis van 3 de 5, y la diferencia entera
-está en accesibilidad, que es su especialidad: 5 de 9.
+igualados, 7 de 7 y 2 de 2.** En geoanálisis van 3 de 5, y en accesibilidad,
+que es su especialidad, 7 de 9.
 
 | De GOAT | Qué haría falta |
 |---|---|
-| Heatmap Connectivity | Nada que no haya: cuánta superficie alcanza cada celda. Falta por tiempo |
-| Huff Model | Lo mismo: reparto de demanda entre equipamientos que compiten |
 | Travel Cost Matrix | «Distancia al más cercano» es media pieza; falta la matriz completa de pares |
 | ÖV-Güteklassen · Trip Count | GTFS del transporte público, que Riobamba no publica. No es trabajo, es un dato que no existe |
 | Geocoding | GOAT usa Pelias, un servicio externo. Mandaría las direcciones fuera del navegador, que es justo lo que este desarrollo evita. Con el índice de calles que ya prepara el visor se puede hacer aquí dentro |
