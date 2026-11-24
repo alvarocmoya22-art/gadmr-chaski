@@ -104,6 +104,45 @@ export default function PanelCapas({
   const [elegidas, setElegidas] = useState<Set<string>>(new Set());
   const [catalogoAbierto, setCatalogoAbierto] = useState(false);
   const [abierta, setAbierta] = useState<string | null>(null);
+  /*
+   * Que fila tiene el menu desplegado, y cuales traen la leyenda abierta.
+   *
+   * Las ocho acciones de una capa estaban escritas a la vista, en dos lineas
+   * de enlaces por tarjeta. Con siete capas en la mesa eran cincuenta y seis
+   * enlaces azules compitiendo por la atencion, y la lista dejaba de leerse
+   * como una lista. Las que se usan a cada rato —encender y apagar— se quedan
+   * fuera; el resto se recoge en el menu, que es lo que hace GOAT.
+   */
+  const [menu, setMenu] = useState("");
+  const [leyendas, setLeyendas] = useState<Set<string>>(new Set());
+
+  /** Una linea del menu de la capa. Se cierra sola al elegir. */
+  const opcion = (
+    rotulo: string,
+    alPulsar: () => void,
+    activa: boolean,
+    peligro = false,
+  ) => (
+    <button
+      type="button"
+      onClick={() => {
+        alPulsar();
+        setMenu("");
+      }}
+      className={`block w-full px-2.5 py-1 text-left text-xs hover:bg-[var(--gr-azul-100)] ${
+        peligro
+          ? "text-[var(--gr-error)]"
+          : activa
+            ? "font-semibold text-[var(--gr-azul-500)]"
+            : "text-[var(--gr-tinta-2)]"
+      }`}
+    >
+      {rotulo}
+      {/* Lo que ya esta puesto se dice con un punto, no solo con negrita:
+          en una lista de siete lineas la negrita sola no salta. */}
+      {activa && !peligro && <span className="float-right">•</span>}
+    </button>
+  );
 
   return (
     <section className="space-y-3">
@@ -279,20 +318,46 @@ export default function PanelCapas({
                     tarjeta no cambia hay que ir leyendo una por una para
                     saber cuál se dejó de dibujar. */}
                 <div
-                  className={`flex items-start gap-2 ${c.visible ? "" : "opacity-45"}`}
+                  className={`flex items-start gap-1.5 ${c.visible ? "" : "opacity-45"}`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => onVisible(c.id)}
-                    title={c.visible ? "Apagar" : "Encender"}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-sm border"
+                  {/* El galon solo aparece si hay leyenda que desplegar: un
+                      triangulo que no abre nada se pulsa una vez y nunca mas,
+                      pero deja la duda de si la capa esta rota. */}
+                  {c.tema ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLeyendas((s) => {
+                          const n = new Set(s);
+                          if (n.has(c.id)) n.delete(c.id);
+                          else n.add(c.id);
+                          return n;
+                        })
+                      }
+                      title={leyendas.has(c.id) ? "Plegar la leyenda" : "Ver la leyenda"}
+                      className="mt-0.5 w-3 shrink-0 text-[10px] leading-4 text-[var(--gr-tinta-3)] hover:text-[var(--gr-tinta)]"
+                    >
+                      {leyendas.has(c.id) ? "▾" : "▸"}
+                    </button>
+                  ) : (
+                    <span className="mt-0.5 w-3 shrink-0" />
+                  )}
+                  <span
+                    className="mt-1 h-3 w-3 shrink-0 rounded-sm border"
                     style={{
                       backgroundColor: c.visible ? c.color : "transparent",
                       borderColor: c.color,
                     }}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[var(--gr-tinta)]">
+                    {/* Con el ojo y el menu ocupando la derecha, un nombre
+                        largo se corta. El titulo lo devuelve al pasar por
+                        encima: «Oferta por habitante · Educacion» y «Oferta
+                        por habitante · Salud» se cortan en el mismo sitio. */}
+                    <p
+                      title={c.nombre}
+                      className="truncate text-sm font-semibold text-[var(--gr-tinta)]"
+                    >
                       {c.derivada && (
                         <span
                           title="Calculada por una herramienta"
@@ -355,92 +420,69 @@ export default function PanelCapas({
                       </p>
                     )}
                   </div>
-                </div>
 
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                  {/* Apagar la capa ya se podía pulsando el cuadro de color,
-                      pero un cuadro de color se lee como una muestra, no como
-                      un interruptor: nadie lo encontraba. Con su nombre al
-                      lado de las demás acciones, se ve. */}
                   <button
                     type="button"
                     onClick={() => onVisible(c.id)}
-                    className="text-[var(--gr-azul-500)] hover:underline"
+                    title={c.visible ? "Apagar la capa" : "Encender la capa"}
+                    aria-label={c.visible ? "Apagar la capa" : "Encender la capa"}
+                    className="shrink-0 rounded px-1 text-[13px] leading-5 text-[var(--gr-tinta-3)] hover:bg-[var(--gr-azul-100)] hover:text-[var(--gr-tinta)]"
                   >
-                    {c.visible ? "Apagar" : "Encender"}
+                    {c.visible ? "◉" : "○"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setAbierta(fichaAbierta ? "" : c.id)}
-                    className="text-[var(--gr-tinta-3)] underline decoration-dotted"
-                  >
-                    {fichaAbierta ? "Ocultar ficha" : "Ver ficha"}
-                  </button>
-                  {/* El filtro va AQUI, en la capa, y no en un panel aparte:
-                      es una propiedad suya y se decide mirandola. */}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setFiltrando(filtrando === c.id ? "" : c.id)
-                    }
-                    className={
-                      filtraAlgo(c.filtro)
-                        ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
-                        : "text-[var(--gr-azul-500)] hover:underline"
-                    }
-                  >
-                    {filtrando === c.id ? "Cerrar filtro" : "Filtrar"}
-                  </button>
-                  {/* Solo las areas pueden ser molde: recortar contra una
-                      linea o un punto no deja nada dentro. */}
-                  {(c.forma === "poligono" || c.forma === "mixta") && (
+                  <div className="relative shrink-0">
                     <button
                       type="button"
-                      onClick={() => onZona(zonaId === c.id ? null : c.id)}
-                      className={
-                        zonaId === c.id
-                          ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
-                          : "text-[var(--gr-azul-500)] hover:underline"
-                      }
-                      title="Recorta las demas capas a esta"
+                      onClick={() => setMenu(menu === c.id ? "" : c.id)}
+                      title="Mas acciones"
+                      aria-label="Mas acciones"
+                      className="rounded px-1 text-[13px] leading-5 text-[var(--gr-tinta-3)] hover:bg-[var(--gr-azul-100)] hover:text-[var(--gr-tinta)]"
                     >
-                      {zonaId === c.id ? "Dejar de ser zona" : "Usar como zona"}
+                      ⋮
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setPintando(pintando === c.id ? "" : c.id)}
-                    className={
-                      c.tema
-                        ? "font-semibold text-[var(--gr-azul-500)] hover:underline"
-                        : "text-[var(--gr-azul-500)] hover:underline"
-                    }
-                  >
-                    {pintando === c.id ? "Cerrar estilo" : "Estilo"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onEncuadrar(c.id)}
-                    className="text-[var(--gr-azul-500)] hover:underline"
-                  >
-                    Encuadrar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => descargar(c)}
-                    className="text-[var(--gr-azul-500)] hover:underline"
-                    title="Descargar como GeoJSON"
-                  >
-                    Exportar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onQuitar(c.id)}
-                    className="text-[var(--gr-error)] hover:underline"
-                  >
-                    Quitar
-                  </button>
+                    {menu === c.id && (
+                      <>
+                        {/* Un telon invisible para cerrar al pulsar fuera. Sin
+                            el, el menu se queda abierto mientras se usa otra
+                            cosa y tapa la capa de abajo. */}
+                        <button
+                          type="button"
+                          aria-label="Cerrar el menu"
+                          onClick={() => setMenu("")}
+                          className="fixed inset-0 z-40 cursor-default"
+                        />
+                        <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] py-1 text-left shadow-2xl">
+                          {opcion("Ver ficha", () => setAbierta(fichaAbierta ? "" : c.id), fichaAbierta)}
+                          {opcion("Filtrar", () => setFiltrando(filtrando === c.id ? "" : c.id), filtraAlgo(c.filtro))}
+                          {opcion("Estilo", () => setPintando(pintando === c.id ? "" : c.id), !!c.tema)}
+                          {(c.forma === "poligono" || c.forma === "mixta") &&
+                            opcion(
+                              zonaId === c.id ? "Dejar de ser zona" : "Usar como zona",
+                              () => onZona(zonaId === c.id ? null : c.id),
+                              zonaId === c.id,
+                            )}
+                          {opcion("Encuadrar", () => onEncuadrar(c.id), false)}
+                          {opcion("Exportar a GeoJSON", () => descargar(c), false)}
+                          {opcion("Quitar de la mesa", () => onQuitar(c.id), false, true)}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
+
+                {/*
+                  LA LEYENDA, DENTRO DE LA FILA Y PLEGADA.
+                  
+                  Estaba solo en la ficha, asi que para saber que significaba
+                  un color habia que abrir un panel aparte y volver. Es lo
+                  primero que se mira de una capa pintada, y aqui se despliega
+                  sin salir de la lista.
+                */}
+                {c.tema && leyendas.has(c.id) && (
+                  <div className="mt-1 pl-[1.6rem]">
+                    <Leyenda capa={c} />
+                  </div>
+                )}
 
                 {/*
                   ESTILO, FILTRO Y FICHA SE VAN A LA DERECHA.
@@ -567,50 +609,7 @@ export default function PanelCapas({
                       </table>
                     )}
 
-                    {c.tema && (
-                      <ul className="space-y-0.5">
-                        {c.tema.coincidencias
-                          ? c.tema.coincidencias.map((m) => (
-                              <li
-                                key={m.valor}
-                                className="flex items-center gap-1.5 text-[11px]"
-                              >
-                                <span
-                                  className="h-2.5 w-4 shrink-0 rounded-sm"
-                                  style={{ backgroundColor: m.color }}
-                                />
-                                <span className="text-[var(--gr-tinta-2)]">
-                                  {m.rotulo}
-                                </span>
-                              </li>
-                            ))
-                          : tramos(c.tema.cortes ?? []).map((t, i) => (
-                              <li
-                                key={t}
-                                className="flex items-center gap-1.5 text-[11px]"
-                              >
-                                <span
-                                  className="h-2.5 w-4 shrink-0 rounded-sm"
-                                  style={{
-                                    backgroundColor: (c.tema?.colores ?? [])[i],
-                                  }}
-                                />
-                                <span className="text-[var(--gr-tinta-2)]">
-                                  {/* Sin tramos no hay escala, y poner la unidad al
-                                      lado de «todas» solo sonaría raro. */}
-                                  {(c.tema?.cortes ?? []).length === 0
-                                    ? t
-                                    : `${t} ${c.tema?.unidad}`}
-                                </span>
-                              </li>
-                            ))}
-                        {c.tema.notaVacio && (
-                          <li className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-                            {c.tema.notaVacio}
-                          </li>
-                        )}
-                      </ul>
-                    )}
+                    {c.tema && <Leyenda capa={c} />}
 
                     {c.metodo && (
                       <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
@@ -1307,5 +1306,61 @@ function CajaEstilo({
         ))}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * La leyenda de una capa pintada: un color y lo que significa.
+ *
+ * Vive aparte porque se dibuja en dos sitios —plegada dentro de la fila de la
+ * capa y entera en la ficha— y una leyenda que dijera dos cosas distintas
+ * segun donde se mire seria peor que no tenerla.
+ */
+function Leyenda({ capa: c }: { capa: Capa }) {
+  if (!c.tema) return null;
+  return (
+            <ul className="space-y-0.5">
+              {c.tema.coincidencias
+                ? c.tema.coincidencias.map((m) => (
+                    <li
+                      key={m.valor}
+                      className="flex items-center gap-1.5 text-[11px]"
+                    >
+                      <span
+                        className="h-2.5 w-4 shrink-0 rounded-sm"
+                        style={{ backgroundColor: m.color }}
+                      />
+                      <span className="text-[var(--gr-tinta-2)]">
+                        {m.rotulo}
+                      </span>
+                    </li>
+                  ))
+                : tramos(c.tema.cortes ?? []).map((t, i) => (
+                    <li
+                      key={t}
+                      className="flex items-center gap-1.5 text-[11px]"
+                    >
+                      <span
+                        className="h-2.5 w-4 shrink-0 rounded-sm"
+                        style={{
+                          backgroundColor: (c.tema?.colores ?? [])[i],
+                        }}
+                      />
+                      <span className="text-[var(--gr-tinta-2)]">
+                        {/* Sin tramos no hay escala, y poner la unidad al
+                            lado de «todas» solo sonaría raro. */}
+                        {(c.tema?.cortes ?? []).length === 0
+                          ? t
+                          : `${t} ${c.tema?.unidad}`}
+                      </span>
+                    </li>
+                  ))}
+              {c.tema.notaVacio && (
+                <li className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+                  {c.tema.notaVacio}
+                </li>
+              )}
+            </ul>
   );
 }
