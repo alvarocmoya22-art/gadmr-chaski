@@ -913,7 +913,25 @@ export default function App() {
   );
 
 
-  const puntos = useMemo(() => ultimo?.puntos ?? [], [ultimo]);
+  /*
+   * Los registros del último cálculo SIGUEN A SU CAPA.
+   *
+   * Se dibujaban siempre, sin depender de nada, y eso dejaba el mapa con
+   * mil puntos encendidos después de apagar todas las capas: no había manera
+   * de quitarlos, porque no eran una capa y no tenían interruptor. Que algo
+   * se pinte sobre el mapa y no se pueda apagar es un fallo aunque lo que
+   * pinte sea correcto.
+   *
+   * Siguen estando a la vista por lo de siempre —un resultado sin los
+   * registros con los que se calculó no se puede discutir con nadie—, pero
+   * ahora se van con el resultado al que pertenecen: si su capa está apagada
+   * o ya no está en la mesa, no hay nada que acompañar.
+   */
+  const puntos = useMemo(() => {
+    if (!ultimo) return [];
+    const suya = capas.find((c) => c.id === ultimo.capaId);
+    return suya && suya.visible !== false ? ultimo.puntos : [];
+  }, [ultimo, capas]);
 
   /** Una de las tres puertas, en la cabecera. */
   const puerta = (clave: Modo, rotulo: string, nota: string) => (
@@ -1389,7 +1407,7 @@ export default function App() {
               <Mapa
                 capas={preparadas}
                 puntos={puntos}
-                ambito={ultimo?.ambito ?? null}
+                ambito={puntos.length > 0 ? (ultimo?.ambito ?? null) : null}
                 mapaBase={mapaBase}
                 onMapaBase={setMapaBase}
                 encuadre={encuadre}
