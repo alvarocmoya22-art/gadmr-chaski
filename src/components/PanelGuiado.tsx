@@ -323,13 +323,13 @@ export default function PanelGuiado({
                 type="button"
                 onClick={() => onSugerencia(l.receta.clave, l.valores)}
                 className={`block w-full rounded border p-1.5 text-left ${
-                  i === 0
+                  i === 0 && l.seguro
                     ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]"
                     : "border-[var(--gr-linea)] hover:border-[var(--gr-azul-500)]"
                 }`}
               >
                 <span className="block text-[11px] uppercase tracking-wide text-[var(--gr-tinta-3)]">
-                  {i === 0 ? "Entendí" : "O quizá"}
+                  {l.seguro ? "Entendí" : i === 0 ? "Puede que sea" : "O quizá"}
                 </span>
                 <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
                   {l.receta.pregunta}
@@ -346,6 +346,12 @@ export default function PanelGuiado({
                 )}
               </button>
             ))}
+            {!lecturas[0].seguro && (
+              <p className="text-[11px] leading-snug text-[var(--gr-aviso)]">
+                Tu frase admite varias lecturas y ninguna gana con claridad.
+                Elige tú: no quiero sonar seguro de algo que no sé.
+              </p>
+            )}
             <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
               Pulsa una y la frase de abajo queda rellena. Nada se corre hasta
               que lo digas, y todo esto se resuelve en tu navegador: no se

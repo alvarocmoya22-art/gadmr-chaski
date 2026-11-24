@@ -54,20 +54,30 @@ const palabras = (s: string) => normalizar(s).split(" ").filter(Boolean);
  *
  * No hace falta meter las que ya están en la pregunta de la receta —esas se
  * añaden solas—; aquí van las otras formas de decir lo mismo.
+ *
+ * **Una entrada con espacios es una FRASE y se busca entera.** No es un
+ * detalle: cuando se partían en palabras sueltas, el «cuanto falta» de la
+ * receta de la distancia dejaba suelto un «falta» que es justo la palabra de
+ * la receta de lo desatendido, y «dónde faltan equipamientos» acababa
+ * midiendo distancias. Una frase vale el doble que una palabra, porque
+ * acertar tres seguidas no pasa por casualidad.
  */
 const VOCABULARIO: Record<string, string[]> = {
-  avance: ["avance", "evolucion", "mes", "meses", "tiempo", "fecha", "fechas", "cuando", "historico", "crecio", "crecimiento"],
-  contar: ["cuantos", "cuantas", "contar", "cuenta", "numero", "total", "hay", "densidad", "por zona", "en cada"],
-  lejos: ["lejos", "lejania", "cerca", "cercano", "cercania", "distancia", "metros", "cuanto falta", "acceso", "mas proximo"],
-  desatendidos: ["desatendido", "desatendidos", "desierto", "vacio", "sin servicio", "peor servido", "mal servido", "falta", "carencia", "deficit", "rejilla"],
-  concentracion: ["amontonan", "amontona", "concentra", "concentracion", "aglomeracion", "caliente", "calientes", "hotspot", "racimo", "cumulo", "donde hay mas"],
-  cobertura: ["radio", "cubre", "cobertura", "alrededor", "buffer", "influencia", "area de servicio", "a la redonda"],
-  "superficie-zona": ["superficie", "area", "hectareas", "ha", "cuanta", "ocupa", "ocupacion", "porcentaje"],
-  kilometros: ["kilometros", "km", "longitud", "vias", "vialidad", "calles", "red vial", "metros de via"],
-  clases: ["clase", "clases", "tipo", "tipos", "categoria", "categorias", "reparto", "desglose", "cuanto de cada"],
-  sectores: ["sectores", "sector", "rutas", "reparto de trabajo", "brigadas", "cuadrillas", "grupos", "agrupar", "dividir", "repartir"],
-  dentro: ["dentro", "recortar", "recorte", "cae en", "intersecta", "solapa", "parte de", "limitar"],
-  juntar: ["de que zona", "a que zona", "etiquetar", "asignar", "pegar", "unir", "cruzar", "que barrio", "pertenece"],
+  avance: ["avance", "evolucion", "meses", "fecha", "fechas", "cuando", "historico", "crecio", "crecimiento", "mes a mes"],
+  // Sin «en cada» ni «por zona»: salen en media docena de preguntas, asi que
+  // no distinguen ninguna. Con ellas, «cuanta superficie hay en cada barrio»
+  // se iba a contar registros.
+  contar: ["cuantos", "cuantas", "contar", "cuenta", "numero", "total", "densidad", "tienen", "mayor", "ranking", "cuales tienen"],
+  lejos: ["lejos", "lejania", "cerca", "cercano", "cercania", "distancia", "acceso", "accesibilidad", "a que distancia", "mas proximo", "cuanto queda"],
+  desatendidos: ["desatendido", "desatendidos", "desierto", "carencia", "deficit", "rejilla", "faltan", "sin servicio", "sin cobertura", "sin equipamiento", "peor servido", "mal servido", "no llega", "donde faltan"],
+  concentracion: ["amontonan", "amontona", "concentra", "concentracion", "aglomeracion", "caliente", "calientes", "hotspot", "racimo", "cumulo", "puntos calientes"],
+  cobertura: ["radio", "cubre", "alrededor", "buffer", "influencia", "redonda", "area de influencia", "radio de"],
+  "superficie-zona": ["superficie", "hectareas", "cuanta", "ocupa", "ocupacion", "porcentaje", "que parte de cada"],
+  kilometros: ["kilometros", "longitud", "metros de via", "km de"],
+  clases: ["clase", "clases", "tipos", "categoria", "categorias", "desglose", "cuanto de cada", "de cada tipo"],
+  sectores: ["sectores", "sector", "rutas", "brigadas", "cuadrillas", "grupos", "agrupar", "dividir", "repartir", "reparto de trabajo"],
+  dentro: ["dentro", "recortar", "recorte", "cortar", "intersecta", "solapa", "limitar", "cae dentro", "parte de"],
+  juntar: ["etiquetar", "asignar", "pegar", "pertenece", "de que zona", "a que zona", "en que barrio", "con su barrio", "el nombre del"],
 };
 
 /** Una lectura de la frase: qué receta, con qué huecos rellenos. */
@@ -80,6 +90,8 @@ export interface Lectura {
   porque: string[];
   /** Los huecos que no supo rellenar y hay que elegir a mano. */
   faltan: Hueco[];
+  /** Si gana con claridad. Si no, se ofrece como pregunta y no como respuesta. */
+  seguro?: boolean;
 }
 
 /** Los huecos de una receta, sin los textos. */
@@ -161,6 +173,20 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
   const dichas = palabras(texto);
   if (dichas.length === 0) return [];
 
+  const dicho = ` ${dichas.join(" ")} `;
+  /*
+   * Las raices de los nombres de las capas que hay cargadas.
+   *
+   * Sirven para descontarlas del vocabulario: una palabra que nombra una capa
+   * esta diciendo SOBRE QUE, no QUE HACER, y dejarla puntuar hace que la
+   * receta cuyo vocabulario contenga ese nombre gane siempre que se mencione.
+   */
+  const nombresDeCapa = new Set(
+    capas.flatMap((c) =>
+      palabras(c.nombre).filter((p) => p.length > 3).map((p) => p.slice(0, 5)),
+    ),
+  );
+
   const lecturas: Lectura[] = [];
   for (const receta of RECETAS) {
     /*
@@ -171,11 +197,13 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
      * puntuaba en todas y ganaba casi siempre. Una palabra de tres letras no
      * distingue una pregunta de otra; lo unico que hace es colarse.
      */
+    const entradas = [
+      ...palabras(receta.pregunta),
+      ...(VOCABULARIO[receta.clave] ?? []).map(normalizar),
+    ];
+    const frases = entradas.filter((v) => v.includes(" "));
     const vocab = new Set(
-      [
-        ...palabras(receta.pregunta),
-        ...(VOCABULARIO[receta.clave] ?? []).flatMap(palabras),
-      ].filter((p) => p.length >= 4),
+      entradas.filter((v) => !v.includes(" ") && v.length >= 4),
     );
     for (const p of ["cada", "esta", "esto", "como", "cual", "hace", "para"]) {
       vocab.delete(p);
@@ -184,11 +212,19 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
     let acertadas = 0;
     for (const d of dichas) {
       if (d.length < 4) continue;
+      // El nombre de una capa NO es vocabulario: es el operando, no la
+      // operacion. «Recortar vialidad a los barrios» puntuaba para la receta
+      // de los kilometros porque «vialidad» esta en su vocabulario, cuando
+      // ahi solo esta nombrando la capa que se quiere recortar.
+      if (nombresDeCapa.has(d.slice(0, 5))) continue;
       const raiz = d.slice(0, 5);
       if ([...vocab].some((v) => v.startsWith(raiz) || d.startsWith(v.slice(0, 5)))) {
         acertadas += 1;
       }
     }
+    // Una frase entera acertada vale por dos palabras: tres seguidas no
+    // coinciden por casualidad.
+    for (const f of frases) if (dicho.includes(f)) acertadas += 2;
     if (acertadas === 0) continue;
 
     /*
@@ -253,6 +289,17 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
           nombresUsados.add(normalizar(sirven[0].c.nombre));
           porque.push(`«${sirven[0].c.nombre}» porque la nombras`);
           puntos += 1;
+          /*
+           * LA FORMA DE LA CAPA DESEMPATA.
+           *
+           * «Cuánta vialidad hay en cada barrio» no dice ni «kilómetros» ni
+           * «longitud», así que por palabras empata con contar registros. Pero
+           * la receta de los kilómetros solo admite líneas en ese hueco y la de
+           * contar admite cualquier cosa: la que pone condiciones y las cumple
+           * encaja mejor que la que no pide nada. Vale menos que una palabra
+           * —tres frente a diez—, así que desempata y nunca manda.
+           */
+          if ((h.formas ?? []).length < 4) puntos += 3;
         } else {
           faltan.push(h);
         }
@@ -289,9 +336,68 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
     lecturas.push({ receta, valores, puntos, porque, faltan });
   }
 
-  return lecturas
+  /*
+   * SIN VERBO PERO CON CAPAS: se pregunta, no se calla.
+   *
+   * «Equipamientos por barrio» no trae ni una palabra de operacion —las dos
+   * nombran capas— asi que ninguna receta puntua y antes contestaba que no
+   * entendia. Pero es como se escribe de verdad, y la pregunta no es
+   * imposible: es ambigua. Un humano responderia «¿contarlos o etiquetarlos?»
+   * y eso es justo lo que se hace aqui: se ofrecen las recetas que encajan con
+   * las capas nombradas, ninguna como segura.
+   */
+  if (lecturas.length === 0) {
+    const nombradas = capas.filter((c) => parecido(c.nombre, dichas) >= 0.5);
+    if (nombradas.length >= 2) {
+      for (const receta of RECETAS) {
+        const h = huecosDe(receta).filter((x) => x.tipo === "capa");
+        if (h.length < 2) continue;
+        const valores: Record<string, string> = { ...(receta.fijos ?? {}) };
+        const usadas = new Set<string>();
+        let llenos = 0;
+        for (const hueco of h) {
+          const sirve = nombradas.find(
+            (c) => (hueco.formas ?? []).includes(c.forma) && !usadas.has(c.id),
+          );
+          if (sirve) {
+            valores[hueco.clave] = sirve.id;
+            usadas.add(sirve.id);
+            llenos++;
+          }
+        }
+        if (llenos === h.length) {
+          lecturas.push({
+            receta,
+            valores,
+            puntos: llenos,
+            porque: [`encaja con ${[...usadas].length} capas que nombras`],
+            faltan: [],
+          });
+        }
+      }
+    }
+  }
+
+  const orden = lecturas
     .sort((a, b) => b.puntos - a.puntos || a.faltan.length - b.faltan.length)
     .slice(0, 4);
+
+  /*
+   * SEGURO SOLO SI GANA POR UNA PALABRA ENTERA.
+   *
+   * Decir «entendí» de una lectura que gano por un pelo es peor que no
+   * entender: el usuario la pulsa sin leerla, porque el programa ha sonado
+   * convencido. «Zonas sin cobertura de equipamientos» y «dónde faltan
+   * equipamientos» eran empates de una palabra que se presentaban como
+   * certezas. Si no hay diez puntos —una palabra acertada— entre la primera y
+   * la segunda, se ofrecen todas como pregunta y no como respuesta.
+   */
+  if (orden.length > 1 && orden[0].puntos - orden[1].puntos < 10) {
+    for (const l of orden) l.seguro = false;
+  } else if (orden.length > 0) {
+    orden[0].seguro = true;
+  }
+  return orden;
 }
 
 /**
