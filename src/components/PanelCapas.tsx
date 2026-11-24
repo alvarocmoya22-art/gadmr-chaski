@@ -7,7 +7,7 @@
  * lleva un resultado es su ficha —las cifras, la leyenda y cómo se obtuvo—,
  * porque sin eso nadie puede defenderlo en una mesa técnica.
  */
-import { useRef, useMemo, useState } from "react";
+import { Fragment, useRef, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { CAPAS_MUNICIPIO, type CapaMunicipal } from "../lib/municipio";
 import type { ReactNode } from "react";
@@ -65,6 +65,10 @@ interface Props {
   zonaId: string | null;
   /** Usa esta capa como zona, o la suelta si ya lo era. */
   onZona: (id: string | null) => void;
+  /** El nuevo orden de la lista, que es el del dibujo en el mapa. */
+  onOrden: (ids: string[]) => void;
+  /** Mete la capa en una carpeta, o la saca con `null`. */
+  onGrupo: (id: string, grupo: string | null) => void;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -95,6 +99,8 @@ export default function PanelCapas({
   onTrazo,
   zonaId,
   onZona,
+  onOrden,
+  onGrupo,
 }: Props) {
   const [encima, setEncima] = useState(false);
   /** Qué tarjeta tiene abierto su panel de filtro. */
@@ -115,6 +121,54 @@ export default function PanelCapas({
    */
   const [menu, setMenu] = useState("");
   const [leyendas, setLeyendas] = useState<Set<string>>(new Set());
+  /*
+   * Que capa se esta arrastrando y sobre cual esta el cursor.
+   *
+   * `encima` solo sirve para pintar la raya de donde va a caer. Sin esa raya
+   * uno suelta a ciegas y acierta a la tercera, que en una lista de doce
+   * capas es insufrible.
+   */
+  const [arrastrando, setArrastrando] = useState("");
+  const [sobre, setSobre] = useState("");
+  const [plegados, setPlegados] = useState<Set<string>>(new Set());
+  /*
+   * Que capa esta esperando nombre de carpeta nueva.
+   *
+   * Con `prompt()` serian dos lineas, pero esa ventana la bloquean algunos
+   * navegadores dentro de un marco y encima tapa la lista que uno esta
+   * mirando para decidir el nombre.
+   */
+  const [nombrando, setNombrando] = useState("");
+
+  /** Los nombres de carpeta que ya existen, para ofrecerlos en el menu. */
+  const grupos = useMemo(
+    () => [...new Set(capas.map((c) => c.grupo).filter((g): g is string => !!g))],
+    [capas],
+  );
+
+  /**
+   * Suelta la capa arrastrada justo ANTES de `destino`.
+   *
+   * Y le pone el grupo del destino. Soltar una capa en medio de una carpeta y
+   * que se quedara fuera de ella romperia la regla de que un grupo es un
+   * tramo seguido: apareceria su rotulo dos veces, con una capa ajena en
+   * medio.
+   */
+  const soltarSobre = (destino: string) => {
+    setSobre("");
+    const id = arrastrando;
+    setArrastrando("");
+    if (!id || id === destino) return;
+    const dest = capas.find((c) => c.id === destino);
+    const orden = capas.filter((c) => c.id !== id).map((c) => c.id);
+    const i = orden.indexOf(destino);
+    orden.splice(i === -1 ? orden.length : i, 0, id);
+    const actual = capas.find((c) => c.id === id);
+    if (actual && (actual.grupo ?? "") !== (dest?.grupo ?? "")) {
+      onGrupo(id, dest?.grupo ?? null);
+    }
+    onOrden(orden);
+  };
 
   /** Una linea del menu de la capa. Se cierra sola al elegir. */
   const opcion = (
@@ -302,13 +356,110 @@ export default function PanelCapas({
         </div>
       ) : (
         <ul className="space-y-2">
-          {capas.map((c) => {
+          {capas.map((c, i) => {
             const fichaAbierta =
               abierta === c.id || (abierta === null && reciente === c.id);
+            /*
+             * Un grupo abre cuando la capa anterior no era del mismo. Los
+             * grupos no son un arbol: son tramos seguidos de esta lista, asi
+             * que la cabecera se deduce al recorrerla y no hay que mantener
+             * ninguna estructura aparte en sincronia con el orden.
+             */
+            const abreGrupo = !!c.grupo && capas[i - 1]?.grupo !== c.grupo;
+            const oculta = !!c.grupo && plegados.has(c.grupo);
+            const delGrupo = c.grupo
+              ? capas.filter((x) => x.grupo === c.grupo)
+              : [];
             return (
+              <Fragment key={c.id}>
+                {abreGrupo && c.grupo && (
+                  <li
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setSobre(`grupo:${c.grupo}`);
+                    }}
+                    onDragLeave={() => setSobre("")}
+                    onDrop={() => {
+                      const id = arrastrando;
+                      setSobre("");
+                      setArrastrando("");
+                      if (id) onGrupo(id, c.grupo ?? null);
+                    }}
+                    className={`flex items-center gap-1.5 rounded px-1 py-1 ${
+                      sobre === `grupo:${c.grupo}`
+                        ? "bg-[var(--gr-azul-100)] ring-1 ring-[var(--gr-azul-500)]"
+                        : ""
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlegados((s) => {
+                          const n = new Set(s);
+                          const g = c.grupo as string;
+                          if (n.has(g)) n.delete(g);
+                          else n.add(g);
+                          return n;
+                        })
+                      }
+                      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                      title={
+                        plegados.has(c.grupo)
+                          ? "Desplegar la carpeta"
+                          : "Plegar la carpeta"
+                      }
+                    >
+                      <span className="w-3 shrink-0 text-[10px] text-[var(--gr-tinta-3)]">
+                        {plegados.has(c.grupo) ? "▸" : "▾"}
+                      </span>
+                      <span className="text-[13px]">🗀</span>
+                      <span className="truncate text-xs font-semibold uppercase tracking-wide text-[var(--gr-tinta-2)]">
+                        {c.grupo}
+                      </span>
+                      <span className="shrink-0 text-[11px] text-[var(--gr-tinta-3)]">
+                        {delGrupo.length}
+                      </span>
+                    </button>
+                    {/* Apagar la carpeta entera: con ocho capas dentro,
+                        apagarlas una por una son ocho clics y el mapa
+                        parpadea otras tantas veces. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const encendidas = delGrupo.filter((x) => x.visible);
+                        const apagarlas = encendidas.length > 0;
+                        for (const x of delGrupo) {
+                          if (x.visible === apagarlas) onVisible(x.id);
+                        }
+                      }}
+                      title="Encender o apagar toda la carpeta"
+                      className="shrink-0 rounded px-1 text-[12px] text-[var(--gr-tinta-3)] hover:bg-[var(--gr-azul-100)] hover:text-[var(--gr-tinta)]"
+                    >
+                      {delGrupo.some((x) => x.visible) ? "◉" : "○"}
+                    </button>
+                  </li>
+                )}
+                {!oculta && (
               <li
-                key={c.id}
+                draggable
+                onDragStart={() => setArrastrando(c.id)}
+                onDragEnd={() => {
+                  setArrastrando("");
+                  setSobre("");
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (arrastrando && arrastrando !== c.id) setSobre(c.id);
+                }}
+                onDragLeave={() => setSobre((v) => (v === c.id ? "" : v))}
+                onDrop={() => soltarSobre(c.id)}
                 className={`rounded-md border bg-[var(--gr-superficie)] p-2 ${
+                  c.grupo ? "ml-3" : ""
+                } ${arrastrando === c.id ? "opacity-40" : ""} ${
+                  sobre === c.id
+                    ? "border-t-2 border-t-[var(--gr-azul-500)]"
+                    : ""
+                } ${
                   reciente === c.id
                     ? "border-[var(--gr-azul-500)]"
                     : "border-[var(--gr-linea)]"
@@ -462,6 +613,18 @@ export default function PanelCapas({
                               zonaId === c.id,
                             )}
                           {opcion("Encuadrar", () => onEncuadrar(c.id), false)}
+                          <div className="my-1 border-t border-[var(--gr-linea)]" />
+                          {grupos
+                            .filter((g) => g !== c.grupo)
+                            .map((g) =>
+                              <Fragment key={g}>
+                                {opcion(`Mover a «${g}»`, () => onGrupo(c.id, g), false)}
+                              </Fragment>,
+                            )}
+                          {opcion("Nueva carpeta…", () => setNombrando(c.id), false)}
+                          {c.grupo &&
+                            opcion("Sacar de la carpeta", () => onGrupo(c.id, null), false)}
+                          <div className="my-1 border-t border-[var(--gr-linea)]" />
                           {opcion("Exportar a GeoJSON", () => descargar(c), false)}
                           {opcion("Quitar de la mesa", () => onQuitar(c.id), false, true)}
                         </div>
@@ -469,6 +632,40 @@ export default function PanelCapas({
                     )}
                   </div>
                 </div>
+
+                {nombrando === c.id && (
+                  <form
+                    className="mt-1.5 flex gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const campo = new FormData(e.currentTarget).get("g");
+                      const g = String(campo ?? "").trim();
+                      setNombrando("");
+                      if (g) onGrupo(c.id, g);
+                    }}
+                  >
+                    <input
+                      name="g"
+                      autoFocus
+                      maxLength={40}
+                      placeholder="Nombre de la carpeta"
+                      className="min-w-0 flex-1 rounded border border-[var(--gr-linea)] bg-[var(--gr-fondo)] px-1.5 py-1 text-xs text-[var(--gr-tinta)]"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded bg-[var(--gr-azul-500)] px-2 text-xs font-semibold text-white"
+                    >
+                      Crear
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNombrando("")}
+                      className="rounded px-1 text-xs text-[var(--gr-tinta-3)]"
+                    >
+                      ✕
+                    </button>
+                  </form>
+                )}
 
                 {/*
                   LA LEYENDA, DENTRO DE LA FILA Y PLEGADA.
@@ -659,6 +856,8 @@ export default function PanelCapas({
                   document.body,
                 )}
               </li>
+                )}
+              </Fragment>
             );
           })}
         </ul>

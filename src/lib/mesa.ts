@@ -40,6 +40,8 @@ type CapaGuardada =
       /** Lo que el usuario cambió y hay que respetar al volver a traerla. */
       id: string;
       nombre: string;
+      /** La carpeta, si la pusieron en una. */
+      grupo?: string;
       color: string;
       visible: boolean;
       /**
@@ -137,6 +139,7 @@ function aGuardadas(capas: Capa[]): CapaGuardada[] {
           fuente: capa.fuente,
           id: capa.id,
           nombre: capa.nombre,
+          grupo: capa.grupo,
           color: capa.color,
           visible: capa.visible,
           filtro: capa.filtro,
@@ -237,6 +240,7 @@ export async function reconstruir(
         ...capa,
         id: guardada.id,
         nombre: guardada.nombre,
+        grupo: guardada.grupo,
         color: guardada.color,
         visible: guardada.visible,
         filtro: guardada.filtro,

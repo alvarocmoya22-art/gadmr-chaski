@@ -952,6 +952,52 @@ export default function App() {
     </button>
   );
 
+  /**
+   * El nuevo orden de la lista, que es el del dibujo.
+   *
+   * No es una preferencia de presentación: el mapa dibuja la lista al revés,
+   * así que la primera capa queda encima. Arrastrar una capa a lo alto de la
+   * lista es la única forma de sacarla de debajo de otra, y antes no había
+   * ninguna.
+   */
+  const reordenar = useCallback((ids: string[]) => {
+    setCapas((cs) => {
+      const por = new Map(cs.map((c) => [c.id, c]));
+      const puestas = ids
+        .map((id) => por.get(id))
+        .filter((c): c is Capa => !!c);
+      // Lo que no venga en la lista se queda al final, por si llega una capa
+      // nueva entre que se empieza a arrastrar y se suelta.
+      const faltan = cs.filter((c) => !ids.includes(c.id));
+      return [...puestas, ...faltan];
+    });
+  }, []);
+
+  /**
+   * Mete una capa en una carpeta, o la saca.
+   *
+   * Y la MUEVE junto a las suyas. Los grupos son tramos seguidos de la lista,
+   * no un árbol: si la capa se quedara donde está, el mismo nombre de grupo
+   * aparecería dos veces con otras capas en medio, y serían dos carpetas con
+   * el mismo rótulo. Al entrar se coloca al final de las que ya están.
+   */
+  const agrupar = useCallback((id: string, grupo: string | null) => {
+    setCapas((cs) => {
+      const capa = cs.find((c) => c.id === id);
+      if (!capa) return cs;
+      const movida = { ...capa, grupo: grupo ?? undefined };
+      const resto = cs.filter((c) => c.id !== id);
+      if (!grupo) return [...resto, movida];
+      const ultima = resto.map((c) => c.grupo === grupo).lastIndexOf(true);
+      if (ultima === -1) return [...resto, movida];
+      return [
+        ...resto.slice(0, ultima + 1),
+        movida,
+        ...resto.slice(ultima + 1),
+      ];
+    });
+  }, []);
+
   /** Un botón del riel: solo icono, con el nombre en el título. */
   const riel = (
     titulo: string,
@@ -1152,6 +1198,8 @@ export default function App() {
               }
               zonaId={zonaId}
               onZona={setZonaId}
+              onOrden={reordenar}
+              onGrupo={agrupar}
               base={
                 <PanelBase
                   conexiones={conexiones}

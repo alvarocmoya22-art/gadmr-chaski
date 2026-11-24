@@ -51,6 +51,17 @@ export interface Capa {
    * cualquiera sigue saliendo como disco.
    */
   anillo?: boolean;
+  /**
+   * La carpeta en la que está, si el usuario la metió en alguna.
+   *
+   * Es un NOMBRE y no una estructura aparte, a propósito. La lista de capas
+   * sigue siendo una lista plana y ordenada —y ese orden es el del dibujo en
+   * el mapa, que no puede depender de cómo estén agrupadas—; los grupos son
+   * solo tramos seguidos de esa lista que comparten nombre. Con un árbol de
+   * verdad habría que decidir qué pasa con el orden entre ramas, y no hay
+   * respuesta buena para eso en un mapa.
+   */
+  grupo?: string;
   /** Los campos de la tabla, con cuántos valores distintos tiene cada uno. */
   campos: { nombre: string; distintos: number; ejemplo: string }[];
   /**
