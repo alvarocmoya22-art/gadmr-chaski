@@ -1045,7 +1045,7 @@ export default function App() {
     <>
       <div className="app-principal flex h-screen flex-col bg-[var(--gr-fondo)] text-[var(--gr-tinta)]">
         <header className="flex items-baseline gap-3 border-b border-[var(--gr-linea)] bg-[var(--gr-superficie)] px-4 py-2">
-          <h1 className="text-lg font-bold tracking-tight text-[var(--gr-azul-500)]">
+          <h1 className="text-lg font-bold tracking-tight text-[var(--gr-azul-texto)]">
             CHASKI
           </h1>
           {/*
@@ -1089,7 +1089,7 @@ export default function App() {
         */}
         <div className="relative min-h-0 flex-1">
           <aside
-            className={`absolute left-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] w-[23rem] flex-col gap-4 overflow-y-auto rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)]/95 p-3 shadow-2xl backdrop-blur-sm transition-[opacity,transform] ${
+            className={`absolute left-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] w-[23rem] flex-col gap-4 overflow-y-auto rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)] p-3 shadow-2xl transition-[opacity,transform] ${
               panelAbierto
                 ? "opacity-100"
                 : "pointer-events-none -translate-x-4 opacity-0"
@@ -1363,7 +1363,7 @@ export default function App() {
             adorno: un riel con iconos que no llevan a nada es peor que no
             tener riel.
           */}
-          <div className="absolute top-3 z-30 flex flex-col gap-1 rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-superficie)]/95 p-1 shadow-xl backdrop-blur-sm"
+          <div className="absolute top-3 z-30 flex flex-col gap-1 rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1 shadow-xl"
             style={{ left: panelAbierto ? "24.5rem" : "0.75rem" }}
           >
             {riel(

@@ -102,7 +102,7 @@ export default function PanelGuiado({
 
   const hueco = (h: Hueco, i: number) => {
     const comun =
-      "mx-0.5 inline-block rounded border border-[var(--gr-azul-500)] bg-[var(--gr-superficie)] px-1 py-0.5 text-sm font-semibold text-[var(--gr-azul-500)]";
+      "mx-0.5 inline-block rounded border border-[var(--gr-azul-500)] bg-[var(--gr-superficie)] px-1 py-0.5 text-sm font-semibold text-[var(--gr-azul-texto)]";
 
     if (h.tipo === "numero") {
       return (

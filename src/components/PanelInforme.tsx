@@ -191,7 +191,7 @@ export default function PanelInforme({
         <button
           type="button"
           onClick={onLamina}
-          className="w-full rounded border border-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-[var(--gr-azul-500)] hover:bg-[var(--gr-azul-100)]"
+          className="w-full rounded border border-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-[var(--gr-azul-texto)] hover:bg-[var(--gr-azul-100)]"
         >
           Abrir la lámina para imprimir
         </button>

@@ -187,7 +187,7 @@ export default function PanelCapas({
         peligro
           ? "text-[var(--gr-error)]"
           : activa
-            ? "font-semibold text-[var(--gr-azul-500)]"
+            ? "font-semibold text-[var(--gr-azul-texto)]"
             : "text-[var(--gr-tinta-2)]"
       }`}
     >
@@ -512,7 +512,7 @@ export default function PanelCapas({
                       {c.derivada && (
                         <span
                           title="Calculada por una herramienta"
-                          className="mr-1 text-[var(--gr-azul-500)]"
+                          className="mr-1 text-[var(--gr-azul-texto)]"
                         >
                           ƒ
                         </span>
@@ -534,7 +534,7 @@ export default function PanelCapas({
                     </p>
                     {zonaId === c.id && (
                       <p className="text-[11px] leading-snug">
-                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                        <span className="font-semibold text-[var(--gr-azul-texto)]">
                           Es la zona
                         </span>
                         <span className="text-[var(--gr-tinta-3)]">
@@ -544,7 +544,7 @@ export default function PanelCapas({
                     )}
                     {filtraAlgo(c.filtro) && (
                       <p className="text-[11px] leading-snug">
-                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                        <span className="font-semibold text-[var(--gr-azul-texto)]">
                           Filtrada
                         </span>
                         <span className="text-[var(--gr-tinta-3)]">
@@ -559,7 +559,7 @@ export default function PanelCapas({
                     */}
                     {c.fechas && c.fechas.length > 0 && (
                       <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-                        <span className="font-semibold text-[var(--gr-azul-500)]">
+                        <span className="font-semibold text-[var(--gr-azul-texto)]">
                           {c.fechas.length === 1
                             ? `Fechas en «${c.fechas[0].campo}»`
                             : `${numero(c.fechas.length)} columnas con fechas`}
@@ -712,7 +712,7 @@ export default function PanelCapas({
                 */}
                 {(pintando === c.id || filtrando === c.id || fichaAbierta) &&
                   createPortal(
-                  <div className="fixed right-3 top-[4.2rem] z-30 flex max-h-[calc(100vh-5.5rem)] w-[21rem] flex-col overflow-hidden rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)]/95 shadow-2xl backdrop-blur-sm max-[1000px]:left-3 max-[1000px]:w-auto">
+                  <div className="fixed right-3 top-[4.2rem] z-30 flex max-h-[calc(100vh-5.5rem)] w-[21rem] flex-col overflow-hidden rounded-lg border border-[var(--gr-linea)] bg-[var(--gr-fondo)] shadow-2xl max-[1000px]:left-3 max-[1000px]:w-auto">
                     <div className="flex items-center gap-2 border-b border-[var(--gr-linea)] px-2.5 py-2">
                       <span
                         className="h-3 w-3 shrink-0 rounded-sm"
@@ -760,7 +760,7 @@ export default function PanelCapas({
                             }}
                             className={`flex-1 border-b-2 px-2 py-1.5 text-[11px] uppercase tracking-wide ${
                               activa
-                                ? "border-[var(--gr-azul-500)] font-semibold text-[var(--gr-azul-500)]"
+                                ? "border-[var(--gr-azul-500)] font-semibold text-[var(--gr-azul-texto)]"
                                 : "border-transparent text-[var(--gr-tinta-3)] hover:text-[var(--gr-tinta)]"
                             }`}
                           >
@@ -1134,7 +1134,7 @@ function CajaFiltro({
                     ta.setSelectionRange(i + trozo.length, i + trozo.length);
                   });
                 }}
-                className="rounded border border-[var(--gr-linea)] px-1 py-0.5 font-mono text-[10px] text-[var(--gr-tinta-3)] hover:border-[var(--gr-azul-500)] hover:text-[var(--gr-azul-500)]"
+                className="rounded border border-[var(--gr-linea)] px-1 py-0.5 font-mono text-[10px] text-[var(--gr-tinta-3)] hover:border-[var(--gr-azul-500)] hover:text-[var(--gr-azul-texto)]"
               >
                 {n}
               </button>
@@ -1154,7 +1154,7 @@ function CajaFiltro({
             onClick={() =>
               compilada?.ok && onCambio({ expr: texto.trim() })
             }
-            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-500)] disabled:opacity-40"
+            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-texto)] disabled:opacity-40"
           >
             {compilada?.ok && pasanExpr !== null
               ? `Dejar ${numero(pasanExpr)} de ${numero(capa.geo.features.length)}`
@@ -1213,7 +1213,7 @@ function CajaFiltro({
             type="button"
             disabled={!rango}
             onClick={() => rango && onCambio(rango)}
-            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-500)] disabled:opacity-40"
+            className="w-full rounded border border-[var(--gr-azul-500)] px-1.5 py-1 text-[11px] text-[var(--gr-azul-texto)] disabled:opacity-40"
           >
             {rango
               ? `Dejar ${numero(quedan)} de ${numero(capa.geo.features.length)}`
@@ -1396,7 +1396,7 @@ function CajaEstilo({
               onClick={() => onCambio(temaDe(capa.geo, campo, m))}
               className={
                 modo === m
-                  ? "font-semibold text-[var(--gr-azul-500)]"
+                  ? "font-semibold text-[var(--gr-azul-texto)]"
                   : "text-[var(--gr-tinta-3)] hover:underline"
               }
             >

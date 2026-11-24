@@ -8,6 +8,20 @@
   color-scheme: light;
 
   --gr-azul-500: #0f4c81;
+  /*
+   * EL AZUL DE FONDO Y EL AZUL DE TEXTO NO PUEDEN SER EL MISMO.
+   *
+   * `--gr-azul-500` es el azul de marca y funciona como FONDO, con texto
+   * blanco encima. Como COLOR DE TEXTO sobre el fondo oscuro da 2,11:1, muy
+   * por debajo del 4,5:1 que hace falta para leer: en el tema oscuro la
+   * pestaña activa se leia PEOR que las apagadas, que estan en 6,13:1. Es el
+   * mundo al reves y se veia a simple vista.
+   *
+   * En claro los dos son el mismo color. En oscuro, el texto usa el azul
+   * claro —8,24:1— y el fondo sigue siendo el marino, que con letra blanca
+   * encima se lee de sobra.
+   */
+  --gr-azul-texto: #0f4c81;
   --gr-azul-700: #0a3860;
   --gr-azul-100: #e4edf6;
   --gr-rojo-500: #a8231c;
@@ -57,6 +71,7 @@
     --gr-aviso: #e8b75b;
     --gr-error: #ff9a90;
     --gr-info: #74b2e6;
+  --gr-azul-texto: #74b2e6;
     --gr-fondo: #0b131b;
     --gr-superficie: #131e28;
     --gr-tinta: #e7eef4;
@@ -86,6 +101,7 @@
   --gr-aviso: #e8b75b;
   --gr-error: #ff9a90;
   --gr-info: #74b2e6;
+  --gr-azul-texto: #74b2e6;
   --gr-fondo: #0b131b;
   --gr-superficie: #131e28;
   --gr-tinta: #e7eef4;

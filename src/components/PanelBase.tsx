@@ -434,7 +434,7 @@ export default function PanelBase({
                         <span className="block text-xs font-semibold text-[var(--gr-tinta)]">
                           {c.titulo}
                           {trayendo === c.id && (
-                            <span className="font-normal text-[var(--gr-azul-500)]">
+                            <span className="font-normal text-[var(--gr-azul-texto)]">
                               {" "}
                               · trayendo…
                             </span>

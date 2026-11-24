@@ -132,7 +132,7 @@ export default function PanelFlujo({
       <button
         type="button"
         onClick={onConstructor}
-        className="w-full rounded border border-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-[var(--gr-azul-500)] hover:bg-[var(--gr-azul-100)]"
+        className="w-full rounded border border-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-[var(--gr-azul-texto)] hover:bg-[var(--gr-azul-100)]"
       >
         Abrir el constructor ▾
       </button>
@@ -157,7 +157,7 @@ export default function PanelFlujo({
                 className={`rounded-md border ${borde} bg-[var(--gr-superficie)] p-2`}
               >
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--gr-azul-100)] text-[11px] font-bold text-[var(--gr-azul-500)]">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--gr-azul-100)] text-[11px] font-bold text-[var(--gr-azul-texto)]">
                     {i + 1}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -213,7 +213,7 @@ export default function PanelFlujo({
                   <button
                     type="button"
                     onClick={() => setAbierto(estaAbierto ? null : paso.id)}
-                    className="text-[var(--gr-azul-500)] hover:underline"
+                    className="text-[var(--gr-azul-texto)] hover:underline"
                   >
                     {estaAbierto ? "Cerrar" : "Ajustar"}
                   </button>
@@ -221,7 +221,7 @@ export default function PanelFlujo({
                     <button
                       type="button"
                       onClick={() => onGuardar(m.capa as Capa)}
-                      className="text-[var(--gr-azul-500)] hover:underline"
+                      className="text-[var(--gr-azul-texto)] hover:underline"
                       title="Dejarlo como capa en la mesa"
                     >
                       Guardar en la mesa

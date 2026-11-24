@@ -97,7 +97,7 @@ function Nodo({ data }: NodeProps) {
         {fuente}
       </p>
       {marcha?.capa && (
-        <p className="text-[10px] leading-snug text-[var(--gr-azul-500)]">
+        <p className="text-[10px] leading-snug text-[var(--gr-azul-texto)]">
           {numero(marcha.capa.geo.features.length)} {FORMA[marcha.capa.forma]}
         </p>
       )}
@@ -429,7 +429,7 @@ export default function Constructor({
                   <button
                     type="button"
                     onClick={() => onGuardar(marcha.capa as Capa)}
-                    className="text-[var(--gr-azul-500)] hover:underline"
+                    className="text-[var(--gr-azul-texto)] hover:underline"
                   >
                     Guardar en la mesa
                   </button>
