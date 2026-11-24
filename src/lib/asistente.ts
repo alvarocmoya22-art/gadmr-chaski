@@ -378,6 +378,19 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
     }
   }
 
+  /*
+   * UN HUECO SIN RELLENAR RESTA, y resta antes de decidir si hay certeza.
+   *
+   * «Cuantos equipamientos de salud hay en cada barrio» empataba con la
+   * receta de la superficie, porque «cuantos» y «cuanta» comparten raiz y era
+   * la unica palabra de operacion de la frase. Pero la de superficie solo
+   * admite areas en su primer hueco, asi que los equipamientos no le caben y
+   * se quedaba a medias: una lectura que ni siquiera se puede completar con
+   * lo que el usuario nombro es peor lectura, y tenia que notarse en la
+   * cuenta y no solo en el orden.
+   */
+  for (const l of lecturas) l.puntos -= l.faltan.length * 5;
+
   const orden = lecturas
     .sort((a, b) => b.puntos - a.puntos || a.faltan.length - b.faltan.length)
     .slice(0, 4);
@@ -392,10 +405,32 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
    * certezas. Si no hay diez puntos —una palabra acertada— entre la primera y
    * la segunda, se ofrecen todas como pregunta y no como respuesta.
    */
-  if (orden.length > 1 && orden[0].puntos - orden[1].puntos < 10) {
-    for (const l of orden) l.seguro = false;
-  } else if (orden.length > 0) {
-    orden[0].seguro = true;
+  if (orden.length > 0) {
+    const gana = orden[0];
+    const segunda = orden[1];
+    /*
+     * Hay dos maneras de estar seguro, y son de distinta naturaleza.
+     *
+     * Por PALABRAS: la primera acierta una palabra de operacion mas que la
+     * segunda. Diez puntos es exactamente eso.
+     *
+     * O por ENCAJE: la primera se completa con las capas que el usuario
+     * nombro y la segunda no. «Cuantos equipamientos de salud hay en cada
+     * barrio» empata en palabras con la receta de la superficie —«cuantos» y
+     * «cuanta» son la misma— pero esa solo admite areas donde van los
+     * equipamientos, que son puntos, y se queda a medias. Poder completarla
+     * es una razon tan buena como una palabra, y es la que usaria cualquiera:
+     * de unos puntos no se pregunta la superficie.
+     *
+     * Mezclar las dos en un solo numero fue el error de la primera version:
+     * los bonos de encaje nunca llegaban a los diez puntos del umbral de
+     * palabras, asi que no decidian nada.
+     */
+    gana.seguro =
+      !segunda ||
+      gana.puntos - segunda.puntos >= 10 ||
+      (gana.faltan.length === 0 && segunda.faltan.length > 0);
+    if (!gana.seguro) for (const l of orden) l.seguro = false;
   }
   return orden;
 }
