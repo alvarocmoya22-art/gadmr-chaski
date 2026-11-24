@@ -54,9 +54,31 @@ completa una frase con huecos: *Contar los registros de ___ que caen en cada
 ___*. La frase es la interfaz: quien la rellena está leyendo lo que va a pasar
 mientras lo elige.
 
-Esto es lo que GOAT no tiene. Su caja está escrita para quien ya sabe SIG: hay
-que saber que lo que uno quiere se llama *Aggregate Points* y que los barrios
-van en el hueco de las zonas y no al revés.
+Su caja de herramientas, como la de GOAT, está escrita para quien ya sabe SIG:
+hay que saber que lo que uno quiere se llama *Aggregate Points* y que los
+barrios van en el hueco de las zonas y no al revés. Las preguntas son la
+puerta para quien no lo sabe.
+
+**GOAT resuelve lo mismo por otro camino, y conviene saber cuál es.** Desde
+2026 trae **GOAT AI**, un asistente que se abre en un panel y al que se le
+escribe en lenguaje normal: busca datos, lee las capas del proyecto y arma y
+corre análisis con las herramientas de su caja. Es más ambicioso que estas
+doce preguntas —acepta cualquier cosa, no una lista— y tiene un precio que
+aquí no se podía pagar:
+
+- Está **en beta** y su propia documentación advierte que «las respuestas de
+  la IA pueden estar equivocadas».
+- Consume **créditos de IA** y necesita que un administrador lo encienda y
+  elija a qué modelo se conecta.
+- **Manda el contexto fuera**: qué proyecto, qué capa, qué hay seleccionado.
+  CHASKI se publica sin servidor y con la promesa de que nada sale del
+  navegador; un asistente así la rompe.
+
+Las doce preguntas no son un asistente ni lo pretenden. Son una lista cerrada
+y **determinista**: la misma pregunta con los mismos datos da siempre lo
+mismo, se ve la frase entera antes de correrla, y no hay nada que revisar
+después porque no hay nada que haya podido inventarse. Funcionan sin cuenta,
+sin crédito y sin conexión.
 
 Las doce preguntas de hoy: cuántos hay en cada zona · qué tan lejos queda lo
 que la gente necesita · qué sectores quedan desatendidos · dónde se amontonan ·
