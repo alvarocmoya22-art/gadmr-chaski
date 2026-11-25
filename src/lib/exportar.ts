@@ -7,6 +7,7 @@
  * no interviene ningún servidor, igual que al cargarlo.
  */
 import type { Capa } from './cargar'
+import { comoFrase, filtraAlgo, filtrada } from './filtro'
 
 /** Un nombre de archivo que Windows acepte y que se entienda al verlo. */
 function nombreArchivo(nombre: string): string {
@@ -19,8 +20,22 @@ function nombreArchivo(nombre: string): string {
   return `${limpio || 'capa'}.geojson`
 }
 
-/** Descarga la capa como GeoJSON. */
-export function descargar(capa: Capa): void {
+/**
+ * Descarga la capa como GeoJSON, YA FILTRADA.
+ *
+ * Se exportaba `capa.geo`, que es la coleccion entera: el filtro vive aparte,
+ * en `capa.filtro`, y lo aplicaban el mapa y las herramientas pero no esto.
+ * Asi que uno recortaba una capa a veinticinco registros, veia «25 de 1.083»
+ * en su tarjeta, pulsaba exportar y se llevaba las 1.083 sin que nada se lo
+ * dijera. Es el peor fallo posible en una exportacion: el archivo no se
+ * parece a lo que estaba en pantalla y el error viaja a QGIS, al informe y a
+ * quien lo reciba.
+ *
+ * Y el recorte se escribe DENTRO del archivo, al lado del metodo: un GeoJSON
+ * con veinticinco de mil registros tiene que decir cuales son los que faltan.
+ */
+export function descargar(bruta: Capa): void {
+  const capa = filtrada(bruta)
   /*
    * Cómo se obtuvo viaja dentro del archivo.
    *
@@ -34,6 +49,9 @@ export function descargar(capa: Capa): void {
     nombre: capa.nombre,
     origen: capa.origen,
     metodo: capa.metodo,
+    filtro: filtraAlgo(bruta.filtro)
+      ? `${comoFrase(bruta.filtro)} · ${capa.geo.features.length} de ${bruta.geo.features.length} registros`
+      : undefined,
     generado: new Date().toISOString(),
     generado_por: 'CHASKI · GADM Riobamba',
   }

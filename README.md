@@ -226,8 +226,11 @@ redondear cada equipamiento a entero.
 | Unir campos | cualquiera | La capa con los campos de otra, por valor o por ubicación |
 | Combinar capas | cualquiera | Las dos capas en una, anotando de cuál viene cada registro |
 
-**Exporta** cualquier capa a GeoJSON, con el nombre, el origen y el método
-escritos dentro del archivo.
+**Exporta** cualquier capa a GeoJSON **ya filtrada**, con el nombre, el origen,
+el método y el recorte escritos dentro del archivo. Lo del recorte no es un
+adorno: una capa con el filtro puesto se exportaba entera, así que uno veía
+«25 de 1.083» en la tarjeta, pulsaba exportar y se llevaba las 1.083 sin que
+nada se lo dijera. Ahora el archivo lleva los 25 y dice cuál fue el filtro.
 
 **Enseña con qué calculó**: los registros que entraron se dibujan encima del
 resultado y el ámbito se dibuja punteado.
