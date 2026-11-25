@@ -18,15 +18,7 @@
 import { useMemo, useState } from "react";
 import type { Capa } from "../lib/cargar";
 import { ejemplos, interpretar } from "../lib/asistente";
-import {
-  ENTRADA,
-  RECETAS,
-  factibilidad,
-  type Hueco,
-  type Receta,
-} from "../lib/recetas";
-import { sugerenciasDe } from "../lib/sugerencias";
-import { numero } from "../lib/format";
+import { ENTRADA, type Hueco, type Receta } from "../lib/recetas";
 
 const FORMA: Record<Capa["forma"], string> = {
   punto: "puntos",
@@ -38,7 +30,6 @@ const FORMA: Record<Capa["forma"], string> = {
 interface Props {
   capas: Capa[];
   receta: Receta | null;
-  onReceta: (clave: string) => void;
   valores: Record<string, string>;
   onValores: (v: Record<string, string>) => void;
   calculando: boolean;
@@ -55,7 +46,6 @@ const capasPara = (capas: Capa[], h: Hueco) =>
 export default function PanelGuiado({
   capas,
   receta,
-  onReceta,
   valores,
   onValores,
   calculando,
@@ -91,28 +81,6 @@ export default function PanelGuiado({
 
   const huecos = (r: Receta) =>
     r.frase.filter((p): p is Hueco => typeof p !== "string");
-
-  /*
-   * Qué se puede responder con lo que hay cargado ahora.
-   *
-   * Se calcula una sola vez y se reparte en dos listas en vez de dejar las
-   * imposibles atenuadas entre las demás: con trece preguntas, «atenuada» se
-   * lee como «esta es menos importante», no como «con tus datos, esta no».
-   */
-  const veredictos = new Map(
-    RECETAS.map((r) => [r.clave, factibilidad(r, capas)]),
-  );
-  const puedo = RECETAS.filter((r) => veredictos.get(r.clave)?.puede);
-  const noPuedo = RECETAS.filter((r) => !veredictos.get(r.clave)?.puede);
-
-  /*
-   * Las preguntas que estas capas sugieren, ya con nombres dentro.
-   *
-   * Van arriba porque son la respuesta a «y ahora qué hago con esto», que es
-   * donde se atasca quien abre esto por primera vez. La lista entera sigue
-   * debajo: esto no quita nada, adelanta.
-   */
-  const sugeridas = sugerenciasDe(capas);
 
   const entradaElegida = receta
     ? (capas.find((c) => c.id === valores[ENTRADA]) ?? null)
@@ -204,35 +172,22 @@ export default function PanelGuiado({
     );
   };
 
-  const tarjeta = (r: Receta) => {
-    const activa = receta?.clave === r.clave;
-    const v = veredictos.get(r.clave);
-    const usable = v?.puede ?? false;
+  /**
+   * La frase de la receta elegida, con sus huecos.
+   *
+   * Vivia dentro de la tarjeta de cada pregunta de la lista. Al quitar la
+   * lista habia que sacarla: la frase es lo que de verdad importa —es donde
+   * se lee lo que va a pasar y se corrige antes de correr— y la lista solo
+   * era una manera de llegar a ella. Ahora se llega escribiendo.
+   */
+  const frase = (r: Receta) => {
     return (
-      <li key={r.clave}>
-        <button
-          type="button"
-          onClick={() => onReceta(r.clave)}
-          className={`w-full rounded-md border p-2 text-left ${
-            activa
-              ? "border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)]"
-              : usable
-                ? "border-[var(--gr-linea)] bg-[var(--gr-superficie)] hover:border-[var(--gr-azul-500)]"
-                : "border-[var(--gr-linea)] bg-transparent opacity-70"
-          }`}
-        >
-          <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
-            {r.pregunta}
-          </span>
-          {!usable && (
-            <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-aviso)]">
-              {v?.falta} {r.sugerencia}
-            </span>
-          )}
-        </button>
-
-        {activa && (
-          <div className="mt-1.5 space-y-2 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-2">
+      <div key={r.clave}>
+        <p className="mb-1 text-[11px] uppercase tracking-wide text-[var(--gr-tinta-3)]">
+          {r.pregunta}
+        </p>
+        {true && (
+          <div className="space-y-2 rounded-md border border-[var(--gr-azul-500)] bg-[var(--gr-superficie)] p-2">
             <p className="text-sm leading-7 text-[var(--gr-tinta)]">
               {r.frase.map((parte, i) =>
                 typeof parte === "string" ? (
@@ -268,7 +223,7 @@ export default function PanelGuiado({
             )}
           </div>
         )}
-      </li>
+      </div>
     );
   };
 
@@ -380,61 +335,26 @@ export default function PanelGuiado({
         )}
       </form>
 
-      {sugeridas.length > 0 && (
-        <div className="rounded-md border border-[var(--gr-azul-500)] bg-[var(--gr-azul-100)] p-2">
-          <p className="mb-1.5 text-xs font-bold text-[var(--gr-tinta)]">
-            Con lo que tienes cargado, puedes preguntar
-          </p>
-          <ul className="space-y-1">
-            {sugeridas.map((s) => (
-              <li key={s.clave}>
-                <button
-                  type="button"
-                  onClick={() => onSugerencia(s.receta, s.valores)}
-                  className="w-full rounded border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1.5 text-left hover:border-[var(--gr-azul-500)]"
-                >
-                  <span className="block text-sm font-semibold text-[var(--gr-tinta)]">
-                    {s.pregunta}
-                  </span>
-                  <span className="block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-                    {s.porque}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-1.5 text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-            Salen de mirar tus capas —su geometría, cuántos registros traen y
-            qué columnas—, aquí en tu navegador. No se consulta nada por fuera.
-          </p>
-        </div>
+      {/*
+        LA FRASE DE LO ELEGIDO, Y NADA MAS.
+
+        Aqui habia tres cosas: un bloque de preguntas sugeridas, la lista de
+        las doce y un desplegable con las que no se pueden responder. Tenia
+        sentido cuando la puerta era elegir una pregunta de una lista; con el
+        asistente delante, es la misma puerta dos veces y obliga a bajar media
+        pantalla para llegar a la frase que ya estaba rellena.
+
+        Las doce recetas siguen siendo lo que el asistente elige por debajo.
+        Lo que se va es el escaparate.
+      */}
+      {receta && frase(receta)}
+
+      {!receta && (
+        <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+          Escribe arriba lo que quieres saber. Si prefieres montar el análisis
+          a mano, la pestaña de herramientas tiene la caja entera.
+        </p>
       )}
-
-      <p className="text-xs leading-snug text-[var(--gr-tinta-3)]">
-        O elige una pregunta de la lista y completa la frase. Por debajo corre
-        la misma herramienta que en la otra pestaña.
-      </p>
-
-      {puedo.length > 0 && (
-        <ul className="space-y-1.5">{puedo.map(tarjeta)}</ul>
-      )}
-
-      {noPuedo.length > 0 && (
-        <details className="rounded-md border border-[var(--gr-linea)]">
-          <summary className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-[var(--gr-tinta-2)]">
-            {numero(noPuedo.length)}{" "}
-            {noPuedo.length === 1 ? "pregunta necesita" : "preguntas necesitan"}{" "}
-            otros datos
-          </summary>
-          <ul className="space-y-1.5 px-2 pb-2">{noPuedo.map(tarjeta)}</ul>
-        </details>
-      )}
-
-      <p className="text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-        {numero(puedo.length)} de {numero(RECETAS.length)} preguntas con lo que
-        tienes cargado. Si lo que buscas no está, la pestaña de herramientas
-        tiene la caja entera.
-      </p>
     </section>
   );
 }

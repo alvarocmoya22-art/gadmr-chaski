@@ -193,32 +193,12 @@ export default function App() {
 
   const receta = RECETAS.find((r) => r.clave === recetaClave) ?? null;
 
-  const elegirReceta = useCallback((clave: string) => {
-    setRecetaClave((previa) => (previa === clave ? null : clave));
-    /*
-     * Los huecos con valor por omisión arrancan con él puesto.
-     *
-     * Si no, el hueco enseña «500» y el cálculo usa el valor por omisión de la
-     * herramienta, que puede ser otro: se lee una cifra en pantalla y sale otra
-     * en el resultado. Es el peor fallo posible en algo que va a un informe, y
-     * no avisa de nada: simplemente da un número equivocado.
-     */
-    const elegida = RECETAS.find((r) => r.clave === clave);
-    const base: Record<string, string> = {};
-    for (const parte of elegida?.frase ?? []) {
-      if (typeof parte !== "string" && parte.defecto)
-        base[parte.clave] = parte.defecto;
-    }
-    setValoresGuiado(base);
-    setError(null);
-  }, []);
-
   /**
-   * Elegir una pregunta ya concreta: receta y huecos de una vez.
+   * Elegir una lectura del asistente: receta y huecos de una vez.
    *
-   * No se puede reutilizar `elegirReceta` y luego poner los valores: esa
-   * función borra los huecos para dejarlos con sus valores por omisión, así
-   * que los que vienen de la sugerencia se perderían.
+   * Los valores por omisión no se ponen aquí: los pone ya `interpretar`, que
+   * rellena cada hueco numérico con el suyo cuando la frase no trae un número.
+   * Si se pusieran también aquí, se machacarían los que el usuario escribió.
    */
   const elegirSugerencia = useCallback(
     (receta: string, valores: Record<string, string>) => {
@@ -1311,7 +1291,6 @@ export default function App() {
                     <PanelGuiado
                       capas={capas}
                       receta={receta}
-                      onReceta={elegirReceta}
                       onSugerencia={elegirSugerencia}
                       valores={valoresGuiado}
                       onValores={setValoresGuiado}

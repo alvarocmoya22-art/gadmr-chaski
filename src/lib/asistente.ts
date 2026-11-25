@@ -444,9 +444,20 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
  * la forma de la frase y que el programa ya sabe qué tienes cargado.
  */
 export function ejemplos(capas: Capa[]): string[] {
-  const puntos = capas.find((c) => c.forma === "punto");
-  const areas = capas.find((c) => c.forma === "poligono" || c.forma === "mixta");
-  const lineas = capas.find((c) => c.forma === "linea");
+  /*
+   * Los ejemplos se hacen con las capas CARGADAS, no con las calculadas.
+   *
+   * Una capa derivada se llama «Agrupamiento en 6 · Equipamientos», y un
+   * ejemplo hecho con dos de ellas sale como «¿Cuantos Agrupamiento en 6 ·
+   * Equipamientos hay en cada Conteo por zona · Equipamientos?», que no
+   * enseña la forma de la frase: la esconde. Si no hay cargadas se usan las
+   * que haya, que es mejor que no poner ejemplo.
+   */
+  const propias = capas.filter((c) => !c.derivada);
+  const donde = propias.length > 0 ? propias : capas;
+  const puntos = donde.find((c) => c.forma === "punto");
+  const areas = donde.find((c) => c.forma === "poligono" || c.forma === "mixta");
+  const lineas = donde.find((c) => c.forma === "linea");
   const salida: string[] = [];
   if (puntos && areas) {
     salida.push(`¿Cuántos ${puntos.nombre} hay en cada ${areas.nombre}?`);
