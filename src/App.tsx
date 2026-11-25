@@ -1218,6 +1218,7 @@ export default function App() {
               onZona={setZonaId}
               onOrden={reordenar}
               onGrupo={agrupar}
+              compacto={modo !== "mirar"}
               base={
                 <PanelBase
                   conexiones={conexiones}
@@ -1278,7 +1279,28 @@ export default function App() {
               </ul>
             )}
 
-            <div className="border-t border-[var(--gr-linea)] pt-3">
+            {/*
+              EN ANALIZAR Y EN CONTAR, ESTO VA ARRIBA.
+              
+              La columna se lee en orden, y el panel del modo estaba al final:
+              para analizar habia que pasar de largo la zona de soltar
+              archivos, el catalogo del municipio, las bases de datos y la
+              lista entera de capas. Con siete capas en la mesa eso es media
+              pantalla de desplazamiento cada vez que se vuelve de mirar el
+              mapa.
+              
+              Se mueve con el orden del flex y no cambiando el JSX de sitio:
+              el contenido es el mismo y asi no hay dos arboles que mantener
+              iguales. En Preparar se queda donde estaba, al final, porque ahi
+              lo primero es traer las capas.
+            */}
+            <div
+              className={
+                modo === "mirar"
+                  ? "border-t border-[var(--gr-linea)] pt-3"
+                  : "order-first"
+              }
+            >
               {modo === "analizar" && (
                 <>
                   <div className="mb-2 flex gap-1 rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)] p-1">

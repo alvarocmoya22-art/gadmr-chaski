@@ -69,6 +69,16 @@ interface Props {
   onOrden: (ids: string[]) => void;
   /** Mete la capa en una carpeta, o la saca con `null`. */
   onGrupo: (id: string, grupo: string | null) => void;
+  /**
+   * Solo la lista de capas, sin lo de traerlas.
+   *
+   * En Analizar y en Contar, la zona de soltar archivos, el catálogo del
+   * municipio y las bases de datos son tres bloques que hay que pasar de
+   * largo cada vez para llegar a lo que se va a usar. Son de Preparar y en
+   * Preparar se quedan; aquí la lista sigue porque mientras se analiza hay
+   * que ver qué capas hay, encenderlas y apagarlas.
+   */
+  compacto?: boolean;
 }
 
 /** Un corte de la leyenda como se lee: «de 12 a 30». */
@@ -101,6 +111,7 @@ export default function PanelCapas({
   onZona,
   onOrden,
   onGrupo,
+  compacto = false,
 }: Props) {
   const [encima, setEncima] = useState(false);
   /** Qué tarjeta tiene abierto su panel de filtro. */
@@ -200,6 +211,7 @@ export default function PanelCapas({
 
   return (
     <section className="space-y-3">
+      {!compacto && (
       <label
         onDragOver={(e) => {
           e.preventDefault();
@@ -237,6 +249,7 @@ export default function PanelCapas({
           }}
         />
       </label>
+      )}
 
       {/*
         Las capas que el municipio ya publica.
@@ -246,6 +259,7 @@ export default function PanelCapas({
         repositorio. Es la forma barata de unir las dos mitades: el visor pone
         los datos de casa y CHASKI pone las herramientas.
       */}
+      {!compacto && (
       <div className="rounded-md border border-[var(--gr-linea)] bg-[var(--gr-superficie)]">
         <button
           type="button"
@@ -323,8 +337,9 @@ export default function PanelCapas({
           </div>
         )}
       </div>
+      )}
 
-      {base}
+      {!compacto && base}
 
       {capas.length === 0 ? (
         <div className="space-y-2">
