@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import type { Capa } from "../lib/cargar";
 import { ejemplos, interpretar } from "../lib/asistente";
 import { ENTRADA, type Hueco, type Receta } from "../lib/recetas";
+import { esNumerico } from "../lib/estilo";
 
 const FORMA: Record<Capa["forma"], string> = {
   punto: "puntos",
@@ -121,7 +122,12 @@ export default function PanelGuiado({
       const campos = (entradaElegida?.campos ?? []).filter((f) =>
         h.soloFecha
           ? conFecha.has(f.nombre)
-          : f.distintos > 1 && f.distintos <= 200,
+          : h.soloNumero
+            ? // Para MEDIR hace falta un número, y da igual cuántos valores
+              // distintos tenga: una altura en metros tiene cientos.
+              entradaElegida !== null &&
+              esNumerico(entradaElegida.geo, f.nombre)
+            : f.distintos > 1 && f.distintos <= 200,
       );
       return (
         <select
@@ -136,7 +142,9 @@ export default function PanelGuiado({
               ? "elige antes la capa"
               : campos.length === 0 && h.soloFecha
                 ? "esa capa no trae fechas"
-                : h.pista}
+                : campos.length === 0 && h.soloNumero
+                  ? "esa capa no trae columnas de números"
+                  : h.pista}
           </option>
           {campos.map((f) => (
             <option key={f.nombre} value={f.nombre}>

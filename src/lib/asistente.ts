@@ -30,6 +30,7 @@
  */
 import { RECETAS, type Hueco, type Receta } from "./recetas";
 import { valoresDe } from "./herramientas";
+import { esNumerico } from "./estilo";
 import type { Capa } from "./cargar";
 
 /** Sin tildes, sin mayúsculas y sin signos: así se compara todo. */
@@ -67,6 +68,26 @@ const VOCABULARIO: Record<string, string[]> = {
   // Sin «en cada» ni «por zona»: salen en media docena de preguntas, asi que
   // no distinguen ninguna. Con ellas, «cuanta superficie hay en cada barrio»
   // se iba a contar registros.
+  /*
+   * «media» y «promedio» mandan, pero no bastan.
+   *
+   * «cuantos hay de media por barrio» tambien lleva «media» y es un conteo;
+   * por eso la receta de contar conserva sus palabras y aqui gana quien
+   * sume mas, que es lo que hace el marcador. Lo que si es inequivoco es
+   * «altura media» o «promedio de», y esas van como frase entera.
+   */
+  "media-zona": [
+    "media",
+    "promedio",
+    "media de",
+    "promedio de",
+    "valor medio",
+    "altura media",
+    "media por",
+    "promedio por",
+    "que altura",
+    "de media",
+  ],
   contar: ["cuantos", "cuantas", "contar", "cuenta", "numero", "total", "densidad", "tienen", "mayor", "ranking", "cuales tienen"],
   lejos: ["lejos", "lejania", "cerca", "cercano", "cercania", "distancia", "acceso", "accesibilidad", "a que distancia", "mas proximo", "cuanto queda"],
   desatendidos: ["desatendido", "desatendidos", "desierto", "carencia", "deficit", "rejilla", "faltan", "sin servicio", "sin cobertura", "sin equipamiento", "peor servido", "mal servido", "no llega", "donde faltan"],
@@ -138,6 +159,33 @@ function dondeAparece(nombre: string, dichas: string[]): number {
  * cuarenta mil claves catastrales no hay ninguna que alguien vaya a escribir
  * en una pregunta, y recorrerlas todas por cada frase cuesta de más.
  */
+/**
+ * La columna numérica que la frase nombra, si hay una sola candidata.
+ *
+ * Compara los trozos del nombre de la columna con las palabras dichas: un
+ * trozo cuenta si alguna palabra de la frase empieza por él, de tres letras en
+ * adelante. Así `alt_med_m` puntúa dos veces con «altura media» —«alt» por
+ * «altura» y «med» por «media»— y el «m» suelto no cuenta, que si contara
+ * engancharía cualquier cosa.
+ */
+function campoNumericoDe(capa: Capa, dichas: string[]): string | null {
+  const marcador = capa.campos
+    .filter((f) => esNumerico(capa.geo, f.nombre))
+    .map((f) => {
+      const trozos = palabras(f.nombre).filter((t) => t.length >= 3);
+      const aciertos = trozos.filter((t) =>
+        dichas.some((d) => d.startsWith(t) || t.startsWith(d)),
+      ).length;
+      return { nombre: f.nombre, aciertos };
+    })
+    .filter((x) => x.aciertos > 0)
+    .sort((a, b) => b.aciertos - a.aciertos);
+  if (marcador.length === 0) return null;
+  // Empate: no se adivina.
+  if (marcador[1] && marcador[1].aciertos === marcador[0].aciertos) return null;
+  return marcador[0].nombre;
+}
+
 function filtroDe(capa: Capa, dichas: string[]): { campo: string; valor: string } | null {
   const frase = ` ${dichas.join(" ")} `;
   for (const campo of capa.campos) {
@@ -315,8 +363,26 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
           faltan.push(h);
         }
       } else {
-        // Los huecos de campo necesitan la capa que ya se eligió.
-        if (h.defecto) valores[h.clave] = h.defecto;
+        /*
+         * EL CAMPO SE BUSCA EN LA FRASE, igual que el filtro.
+         *
+         * Quien escribe «altura media de las edificaciones por plataforma» ya
+         * dijo qué quiere medir. La columna se llama `alt_med_m`, que no es la
+         * palabra pero empieza por ella: se parte el nombre de la columna en
+         * trozos y se mira cuáles aparecen en la frase. Si una columna gana
+         * sola, se propone diciendo por qué; si empatan dos, se deja el hueco
+         * vacío, porque proponer la equivocada es peor que no proponer.
+         *
+         * Nunca se inventa: la columna existe y es numérica, y eso se
+         * comprueba sobre los datos que están cargados.
+         */
+        const deLaCapa = capas.find((c) => c.id === valores.entrada);
+        const c = h.soloNumero && deLaCapa ? campoNumericoDe(deLaCapa, dichas) : null;
+        if (c) {
+          valores[h.clave] = c;
+          porque.push(`la columna «${c}» porque la nombras`);
+          puntos += 2;
+        } else if (h.defecto) valores[h.clave] = h.defecto;
         else faltan.push(h);
       }
     }

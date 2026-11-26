@@ -16,6 +16,7 @@ import type { Captura } from './Mapa'
 import type { Capa } from '../lib/cargar'
 import type { Informe } from '../lib/diagnostico'
 import { numero } from '../lib/format'
+import { cifraLeyenda } from '../lib/medidas'
 
 interface Props {
   informe: Informe
@@ -28,10 +29,16 @@ interface Props {
 
 /** Un corte de la leyenda como se lee. */
 function tramos(cortes: number[]): string[] {
-  const cifra = (n: number) =>
-    n.toLocaleString('es-EC', {
-      maximumFractionDigits: Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 1 ? 1 : 3,
-    })
+  /*
+   * LOS MISMOS DECIMALES QUE EL PANEL, y por eso se usa `cifraLeyenda`.
+   *
+   * Aquí había un redondeo propio, de un decimal a partir de 1. La misma capa
+   * salía «3,97 a 4,31» en pantalla y «4 a 4,3» en la lámina impresa, y dos
+   * tramos seguidos podían acabar diciendo el mismo número. Es la leyenda de
+   * un mapa que se va a defender en una mesa: tiene que decir lo mismo en los
+   * dos sitios y tiene que distinguirse un tramo de otro.
+   */
+  const cifra = cifraLeyenda
   if (cortes.length === 0) return ['Todas las piezas']
   const salida = [`hasta ${cifra(cortes[0])}`]
   for (let i = 1; i < cortes.length; i++) salida.push(`${cifra(cortes[i - 1])} a ${cifra(cortes[i])}`)

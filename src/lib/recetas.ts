@@ -29,6 +29,16 @@ export interface Hueco {
   unidad?: string;
   /** Para los huecos de campo: solo los que traen fechas. */
   soloFecha?: boolean;
+  /**
+   * Para los huecos de campo: solo los que traen números.
+   *
+   * Hace falta para las medidas. Sin esto, el hueco ofrecía las columnas con
+   * entre 2 y 200 valores distintos, que es el criterio para SEPARAR en
+   * categorías y justo el contrario del que sirve para MEDIR: una altura en
+   * metros con un decimal tiene cientos de valores distintos y quedaba fuera
+   * de la lista, mientras que «parroquia» entraba y no se puede promediar.
+   */
+  soloNumero?: boolean;
 }
 
 export interface Receta {
@@ -103,6 +113,39 @@ export const RECETAS: Receta[] = [
     herramienta: "agregar-puntos",
     fijos: { estadistico: "cuenta" },
     sugerencia: "Equipamientos en cada barrio.",
+  },
+  /*
+   * LA MEDIDA MEDIA POR ZONA, que es media de las preguntas de planificación.
+   *
+   * «¿Qué altura media tienen las edificaciones en cada plataforma?», «¿qué
+   * COS medio sale por PIT?», «¿cuál es la superficie media de predio por
+   * barrio?». Faltaba: se podía CONTAR por zona pero no MEDIR por zona,
+   * aunque la herramienta sabe hacerlo desde el principio —es el mismo
+   * «Agregar puntos» con el estadístico cambiado—. El asistente ofrecía
+   * contar equipamientos cuando le preguntaban por alturas.
+   */
+  {
+    clave: "media-zona",
+    plantilla: "¿Cuánto vale de media {campoValor} de {entrada} en cada {zonas:uno}?",
+    pregunta: "¿Cuánto vale de media en cada zona?",
+    frase: [
+      "Calcular la media de",
+      {
+        clave: "campoValor",
+        tipo: "campo",
+        pista: "la columna a medir",
+        soloNumero: true,
+      },
+      "de",
+      { clave: ENTRADA, tipo: "capa", formas: CUALQUIERA, pista: "una capa" },
+      "en cada",
+      { clave: "zonas", tipo: "capa", formas: AREAS, pista: "capa de zonas" },
+    ],
+    devuelve:
+      "Las zonas pintadas según el valor medio que les toca, con cuántos registros entraron en cada media.",
+    herramienta: "agregar-puntos",
+    fijos: { estadistico: "media" },
+    sugerencia: "La altura media de la edificación en cada plataforma.",
   },
   {
     clave: "lejos",

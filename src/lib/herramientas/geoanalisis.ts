@@ -12,7 +12,7 @@
 import { poligonosDe } from '../geo'
 import { aMulti, intersecar, planoDe, unir, type Multi } from '../geoproceso'
 import { planoDe as _planoDe } from '../geoproceso'
-import { areaHa, areaM2, longitudM, longitudPorZona, prepararZonas, zonaDe } from '../medidas'
+import { areaHa, areaM2, cifraLeyenda, longitudM, longitudPorZona, prepararZonas, zonaDe } from '../medidas'
 import { ESTADISTICOS, aNumero, kMedias, necesitaCampo, resumir, type Estadistico } from '../estadistica'
 import { CELDAS_HOTSPOT, TODA_LA_CATEGORIA, calcularHotspot } from '../hotspot'
 import { piezasDe, puntosDe, recuadroDe } from '../ambito'
@@ -70,6 +70,25 @@ function colorDePeriodo(i: number, total: number): string {
   const b = leer(RAMPA_GRADUADA[alto])
   const mezcla = a.map((x, k) => Math.round(x + (b[k] - x) * f))
   return `#${mezcla.map((x) => x.toString(16).padStart(2, '0')).join('')}`
+}
+
+/** El rótulo del estadístico, tal como se llama en la caja de herramientas. */
+const rotuloDe = (e: Estadistico): string =>
+  ESTADISTICOS.find((x) => x.clave === e)?.rotulo ?? e
+
+/**
+ * El nombre de una zona, buscado entre las columnas que suelen traerlo.
+ *
+ * «La que más: 6,47» obliga a abrir la tabla para saber cuál es. Con el
+ * nombre al lado, la cifra del resumen ya se puede leer en voz alta en una
+ * reunión, que es para lo que existe el resumen.
+ */
+function nombreDeZona(props: Record<string, unknown> | null | undefined): string {
+  for (const clave of ['nombre', 'NOMBRE', 'barrio', 'clave', 'rotulo', 'name', 'numero']) {
+    const v = props?.[clave]
+    if (v !== undefined && v !== null && v !== '') return String(v)
+  }
+  return 'sin nombre'
 }
 
 export const GEOANALISIS: Herramienta[] = [
@@ -273,18 +292,52 @@ export const GEOANALISIS: Herramienta[] = [
       const mayor = [...rasgos].sort(
         (a, b) => Number(b.properties?.[campoSalida] ?? 0) - Number(a.properties?.[campoSalida] ?? 0),
       )[0]
+      /*
+       * `numero` REDONDEA A ENTERO, y eso no vale para una medida.
+       *
+       * Con el estadístico en «cuenta» el valor son registros y el entero es
+       * lo correcto. Con una media deja de serlo: una altura media de 6,47 m
+       * salía impresa como «6» en el resumen y en el informe, perdiendo
+       * justamente la cifra por la que se hizo el cálculo.
+       */
+      const cifra = (v: number) =>
+        estadistico === 'cuenta' ? numero(v) : cifraLeyenda(v)
+      const conValor = rasgos
+        .map((f) => f.properties?.[campoSalida])
+        .filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
       const resumen: Fila[] = [
         { etiqueta: 'Registros repartidos', valor: numero(elegidos.length - fuera) },
         { etiqueta: 'Zonas con algún registro', valor: `${numero(conAlgo)} de ${numero(zonas.length)}` },
         {
           etiqueta: 'La que más',
-          valor: numero(Number(mayor?.properties?.[campoSalida] ?? 0)),
+          valor: `${cifra(Number(mayor?.properties?.[campoSalida] ?? 0))}${
+            mayor ? ` · ${nombreDeZona(mayor.properties)}` : ''
+          }`,
         },
       ]
+      /*
+       * Con una medida, la cifra del conjunto es la primera que se pregunta.
+       *
+       * «La que más» sin un «de media» al lado no dice si 6,47 m es mucho:
+       * hace falta saber que la media de todas las zonas es 4,51 m. Con
+       * «cuenta» no se pone, porque el total ya está en «registros
+       * repartidos» y la media de registros por zona no la pide nadie.
+       */
+      if (estadistico !== 'cuenta' && conValor.length > 0) {
+        const menor = Math.min(...conValor)
+        const mayorV = Math.max(...conValor)
+        resumen.push({
+          etiqueta: `${rotuloDe(estadistico)} de las zonas`,
+          valor: cifra(conValor.reduce((s, v) => s + v, 0) / conValor.length),
+        })
+        resumen.push({
+          etiqueta: 'Entre la menor y la mayor',
+          valor: `${cifra(menor)} — ${cifra(mayorV)}`,
+        })
+      }
       if (fuera > 0) resumen.push({ etiqueta: 'Fuera de toda zona', valor: numero(fuera) })
 
-      const rotuloEstadistico =
-        ESTADISTICOS.find((e) => e.clave === estadistico)?.rotulo ?? estadistico
+      const rotuloEstadistico = rotuloDe(estadistico)
       const comoSeLlama =
         estadistico === 'cuenta' ? 'Conteo por zona' : `${rotuloEstadistico} por zona`
       const { nombre, origen } = tituloDe(ctx, comoSeLlama)
@@ -300,7 +353,14 @@ export const GEOANALISIS: Herramienta[] = [
             'Sin color: esas zonas no recibieron ningún registro.',
           ),
           resumen,
-          metodo: `Cada registro se asigna a la zona que lo contiene. La densidad usa la superficie de la zona medida sobre el elipsoide WGS84.${fuera > 0 ? ` ${numero(fuera)} registros cayeron fuera de todas las zonas y no se reparten.` : ''}`,
+          metodo:
+            `Cada registro se asigna a la zona que lo contiene` +
+            (estadistico === 'cuenta'
+              ? '. La densidad usa la superficie de la zona medida sobre el elipsoide WGS84.'
+              : `, y de los que caen dentro se calcula ${rotuloEstadistico.toLowerCase()} de «${campoValor}». Las zonas sin ningún registro quedan sin valor, no en cero: no es que midan cero, es que no hay con qué medirlas.`) +
+            (fuera > 0
+              ? ` ${numero(fuera)} registros cayeron fuera de todas las zonas y no se reparten.`
+              : ''),
         }),
         puntos: elegidos,
         aviso:

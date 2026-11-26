@@ -631,11 +631,28 @@ export default function App() {
        * entrar», porque si no el panel promete una cosa y la lamina trae otra.
        * Por eso sale de `analisisDeLaMesa`, que usan los dos.
        */
-      const seccionesDeAnalisis = analisisDeLaMesa(preparadas).map((c) => ({
+      const deLaMesa = analisisDeLaMesa(preparadas);
+      const seccionesDeAnalisis = deLaMesa.map((c) => ({
         titulo: c.nombre,
         filas: c.resumen ?? [],
         lectura: c.metodo,
       }));
+
+      /*
+       * LA LAMINA NECESITA SABER DE QUE CAPA ES EL MAPA, para su leyenda.
+       *
+       * Con el diagnostico general puesto es el conteo por zona que el propio
+       * informe crea. Sin el no habia ninguna, y la lamina salia con el mapa
+       * pintado en cinco azules y sin ninguna clave para leerlos: un
+       * coropletas sin leyenda, que es un dibujo y no un dato. La capa del
+       * primer analisis es la que encabeza el informe, asi que es la que toca.
+       *
+       * Va aparte de `capaPrincipal` a proposito. Esa otra manda los PUNTOS
+       * del analisis sobre el mapa, y los puntos aqui son los registros de la
+       * capa de entrada: apuntarla a un analisis de 166.530 edificaciones
+       * llenaria la lamina de ciento sesenta mil puntos encima del coropletas.
+       */
+      const capaDelMapa = capaPrincipal ?? deLaMesa[0]?.id ?? null;
 
       const inf = diagnosticar({
         nombreCapa: reg.nombre,
@@ -662,7 +679,7 @@ export default function App() {
         secciones: [...seccionesDeAnalisis, ...inf.secciones],
       });
       setAjustesUsados(ajustesInforme);
-      setCapaInforme(capaPrincipal);
+      setCapaInforme(capaDelMapa);
       setUltimo({ puntos, ambito: null, capaId: capaPrincipal ?? "" });
       setRecados([]);
       setCalculando(false);
