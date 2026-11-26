@@ -172,6 +172,16 @@ export default function App() {
   // Informe
   const [ajustesInforme, setAjustesInforme] =
     useState<AjustesInforme>(INFORME_INICIAL);
+  /*
+   * Si el usuario ya toco el formulario del informe.
+   *
+   * Mientras no lo haya tocado, los huecos se rellenan solos con lo que hay
+   * en la mesa. En cuanto elige algo —aunque sea «sin reparto por zonas», que
+   * es un hueco vacio a proposito— se deja de adivinar: una propuesta que
+   * vuelve a aparecer despues de que la quiten no es una ayuda, es una
+   * discusion.
+   */
+  const [informeTocado, setInformeTocado] = useState(false);
   const [informe, setInforme] = useState<Informe | null>(null);
   const [capaInforme, setCapaInforme] = useState<string | null>(null);
   const [laminaAbierta, setLaminaAbierta] = useState(false);
@@ -996,6 +1006,79 @@ export default function App() {
     });
   }, []);
 
+  /*
+   * CONTAR LLEGA RELLENO, NO EN BLANCO.
+   *
+   * El informe pedia las capas otra vez: la de registros, la de zonas y la
+   * del limite, con sus tres desplegables en «Elige la capa...». Pero esas
+   * capas ya estaban elegidas —se acaba de analizar con ellas— y volver a
+   * decirlas se siente como empezar otro geoproceso en vez de contar lo que
+   * ya se hizo.
+   *
+   * Se propone a partir de lo que el usuario YA señalo, en este orden: lo que
+   * puso en la frase del asistente, la capa que marco como zona, y si no hay
+   * ninguna de las dos, la unica candidata que encaje por su forma. Lo que no
+   * se hace es inventarse una eleccion cuando hay varias igual de buenas: ahi
+   * el hueco se queda vacio y lo decide quien escribe el informe.
+   *
+   * El limite importa mas que los otros dos: sin el, la superficie de
+   * referencia sale inflada y eso empuja el patron hacia «agrupado» y la
+   * cobertura hacia abajo. El propio panel lo avisa en amarillo; mejor que no
+   * haga falta el aviso.
+   */
+  useEffect(() => {
+    if (informeTocado) return;
+    const propias = capas.filter((c) => !c.derivada);
+    const unica = (formas: Capa["forma"][]) => {
+      const sirven = propias.filter((c) => formas.includes(c.forma));
+      return sirven.length === 1 ? sirven[0].id : "";
+    };
+    const existe = (id: string) => (capas.some((c) => c.id === id) ? id : "");
+
+    /*
+     * Con varias capas de areas, LA MAS FINA REPARTE Y LA MAS GRUESA ACOTA.
+     *
+     * No es un desempate cualquiera: es lo que significan las dos casillas.
+     * El reparto quiere el corte mas fino que haya —212 barrios dicen mas que
+     * 18 plataformas— y el limite quiere el contorno que las contiene a
+     * todas, que es el de menos piezas. Con las capas de Riobamba sale
+     * exactamente lo que elegiria uno a mano: reparto por barrios, limite por
+     * plataformas.
+     *
+     * Si solo hay una capa de areas, hace las dos cosas: es a la vez el
+     * reparto y el contorno, que es lo correcto cuando no hay otra.
+     */
+    const areas = propias
+      .filter((c) => c.forma === "poligono" || c.forma === "mixta")
+      .sort((a, b) => b.geo.features.length - a.geo.features.length);
+
+    const registros =
+      existe(valoresGuiado.entrada ?? "") || unica(["punto"]);
+    const zonas =
+      existe(valoresGuiado.zonas ?? "") ||
+      existe(zonaId ?? "") ||
+      areas[0]?.id ||
+      "";
+    const limite =
+      capas.find((c) => /l[ií]mite/i.test(c.nombre))?.id ??
+      areas[areas.length - 1]?.id ??
+      "";
+
+    setAjustesInforme((a) => {
+      const nuevo = {
+        ...a,
+        registros: a.registros || registros,
+        zonas: a.zonas || zonas,
+        ambito: a.ambito || limite,
+      };
+      const igual =
+        nuevo.registros === a.registros &&
+        nuevo.zonas === a.zonas &&
+        nuevo.ambito === a.ambito;
+      return igual ? a : nuevo;
+    });
+  }, [capas, zonaId, valoresGuiado, informeTocado]);
+
   /** Un botón del riel: solo icono, con el nombre en el título. */
   const riel = (
     titulo: string,
@@ -1318,7 +1401,10 @@ export default function App() {
                   <PanelInforme
                     capas={capas}
                     ajustes={ajustesInforme}
-                    onAjustes={setAjustesInforme}
+                    onAjustes={(a) => {
+                      setInformeTocado(true);
+                      setAjustesInforme(a);
+                    }}
                     calculando={calculando}
                     onCorrer={correrInforme}
                     hayInforme={informe !== null}
