@@ -32,6 +32,7 @@ import {
 } from "./lib/flujo";
 import PanelGuiado from "./components/PanelGuiado";
 import PanelInforme, {
+  analisisDeLaMesa,
   INFORME_INICIAL,
   type AjustesInforme,
 } from "./components/PanelInforme";
@@ -182,20 +183,6 @@ export default function App() {
    * discusion.
    */
   const [informeTocado, setInformeTocado] = useState(false);
-  /*
-   * Las capas que creo el informe la ultima vez.
-   *
-   * El informe necesita dos capas para la lamina —el conteo por zona y los
-   * puntos calientes— y las creaba cada vez sin quitar las anteriores: a la
-   * tercera pulsacion habia seis capas iguales con el mismo nombre. De ahi la
-   * sensacion de que Contar es «otro proceso»: porque lo era, y ademas se
-   * acumulaba.
-   *
-   * Son capas DEL INFORME, no del usuario: volver a armarlo las reemplaza.
-   * Las que el usuario calculo a mano en Analizar no se tocan, aunque se
-   * llamen igual, porque no estan en esta lista.
-   */
-  const capasDelInforme = useRef<string[]>([]);
   /*
    * Con que ajustes se calculo el informe que hay en pantalla.
    *
@@ -600,7 +587,7 @@ export default function App() {
           },
         });
         if (!("error" in r)) {
-          nuevas.push(r.capa);
+          nuevas.push({ ...r.capa, delInforme: true });
           capaPrincipal = r.capa.id;
         }
       }
@@ -618,7 +605,7 @@ export default function App() {
         },
       }) : { error: "sin diagnostico general" };
       if (!("error" in rh)) {
-        nuevas.push(rh.capa);
+        nuevas.push({ ...rh.capa, delInforme: true });
         if (!capaPrincipal) capaPrincipal = rh.capa.id;
       }
 
@@ -639,21 +626,16 @@ export default function App() {
        *
        * Las que creo el propio informe se quedan fuera: sus cifras ya salen
        * en la bateria y se contarian dos veces.
+       *
+       * La cuenta tiene que ser LA MISMA que enseña el panel en «Lo que va a
+       * entrar», porque si no el panel promete una cosa y la lamina trae otra.
+       * Por eso sale de `analisisDeLaMesa`, que usan los dos.
        */
-      const propias = capasDelInforme.current;
-      const seccionesDeAnalisis = preparadas
-        .filter(
-          (c) =>
-            c.derivada &&
-            !propias.includes(c.id) &&
-            c.resumen &&
-            c.resumen.length > 0,
-        )
-        .map((c) => ({
-          titulo: c.nombre,
-          filas: c.resumen ?? [],
-          lectura: c.metodo,
-        }));
+      const seccionesDeAnalisis = analisisDeLaMesa(preparadas).map((c) => ({
+        titulo: c.nombre,
+        filas: c.resumen ?? [],
+        lectura: c.metodo,
+      }));
 
       const inf = diagnosticar({
         nombreCapa: reg.nombre,
@@ -669,11 +651,11 @@ export default function App() {
         general: ajustesInforme.bateria,
       });
 
-      const viejas = capasDelInforme.current;
-      capasDelInforme.current = nuevas.map((c) => c.id);
+      // Las del informe anterior se van; las del usuario se quedan aunque se
+      // llamen igual, porque no llevan la marca.
       setCapas((previas) => [
         ...nuevas,
-        ...previas.filter((c) => !viejas.includes(c.id)),
+        ...previas.filter((c) => !c.delInforme),
       ]);
       setInforme({
         ...inf,
@@ -698,9 +680,6 @@ export default function App() {
 
   const quitar = useCallback(
     (id: string) => {
-      // Si quita a mano una capa del informe, deja de ser del informe: no se
-      // puede reemplazar algo que ya no esta.
-      capasDelInforme.current = capasDelInforme.current.filter((x) => x !== id);
       setCapas((cs) => cs.filter((c) => c.id !== id));
       if (capaId === id) setCapaId(null);
       /*
@@ -1166,9 +1145,7 @@ export default function App() {
      * medidas fijas son relleno —y arrastran un radio de cobertura que nadie
      * pidio—. Sin analisis, son lo unico que hay y entonces si valen.
      */
-    const hayAnalisis = capas.some(
-      (c) => c.derivada && c.resumen && c.resumen.length > 0,
-    );
+    const hayAnalisis = analisisDeLaMesa(capas).length > 0;
 
     setAjustesInforme((a) => {
       const nuevo = {

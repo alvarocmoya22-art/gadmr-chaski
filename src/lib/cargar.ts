@@ -90,6 +90,16 @@ export interface Capa {
   visible: boolean;
   /** Cierto si la calculó una herramienta en vez de venir de un archivo. */
   derivada?: boolean;
+  /**
+   * La creó el propio informe, no el usuario.
+   *
+   * Importa para dos cosas: no se cuenta como análisis propio —sus cifras ya
+   * salen en el diagnóstico general y se contarían dos veces— y al rehacer el
+   * informe se reemplaza en vez de acumularse. Antes esto vivía en un `ref`
+   * de App, que se pierde al recargar: las dos capas del informe anterior
+   * volvían de la mesa guardada haciéndose pasar por análisis del usuario.
+   */
+  delInforme?: boolean;
   /** Cómo pintarla por un campo numérico, cuando la herramienta lo decide. */
   tema?: Tema;
   /** Las cifras del cálculo, para la ficha del panel. */
