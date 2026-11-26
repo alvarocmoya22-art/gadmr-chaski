@@ -1064,12 +1064,27 @@ export default function App() {
       areas[areas.length - 1]?.id ??
       "";
 
+    /*
+     * MIENTRAS NADIE TOQUE, LA PROPUESTA MANDA SOBRE LA ANTERIOR.
+     *
+     * Al principio solo rellenaba huecos vacios, y eso dejaba una propuesta
+     * peor congelada: con el ejemplo cargado proponia Plataformas de limite
+     * —la capa de areas con menos piezas— y al traer despues el Limite urbano
+     * del catalogo, que es el limite de verdad y se reconoce por el nombre,
+     * el ambito se quedaba en Plataformas porque ya no estaba vacio. Son 167
+     * hectareas de diferencia y mueven la densidad del informe.
+     *
+     * Una propuesta que no mejora cuando llega un dato mejor no es una
+     * propuesta, es una decision tomada a espaldas de quien firma el informe.
+     * Lo calculado gana, salvo que salga vacio: ahi se respeta lo que hubiera,
+     * porque borrar una eleccion nunca es una mejora.
+     */
     setAjustesInforme((a) => {
       const nuevo = {
         ...a,
-        registros: a.registros || registros,
-        zonas: a.zonas || zonas,
-        ambito: a.ambito || limite,
+        registros: registros || a.registros,
+        zonas: zonas || a.zonas,
+        ambito: limite || a.ambito,
       };
       const igual =
         nuevo.registros === a.registros &&
