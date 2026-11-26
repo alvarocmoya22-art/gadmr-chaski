@@ -32,6 +32,8 @@ interface Props {
   calculando: boolean
   onCorrer: () => void
   hayInforme: boolean
+  /** El informe de abajo ya no corresponde a estos ajustes. */
+  desfasado?: boolean
   onLamina: () => void
   error: string | null
 }
@@ -46,6 +48,7 @@ export default function PanelInforme({
   calculando,
   onCorrer,
   hayInforme,
+  desfasado = false,
   onLamina,
   error,
 }: Props) {
@@ -189,9 +192,11 @@ export default function PanelInforme({
             propias capas en vez de añadir dos mas. */}
         {calculando
           ? 'Calculando…'
-          : hayInforme
-            ? 'Rehacer el informe'
-            : 'Armar el informe'}
+          : desfasado
+            ? 'Rehacer con estos ajustes'
+            : hayInforme
+              ? 'Rehacer el informe'
+              : 'Armar el informe'}
       </button>
 
       {hayInforme && (

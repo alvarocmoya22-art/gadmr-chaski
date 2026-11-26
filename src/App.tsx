@@ -196,6 +196,17 @@ export default function App() {
    * llamen igual, porque no estan en esta lista.
    */
   const capasDelInforme = useRef<string[]>([]);
+  /*
+   * Con que ajustes se calculo el informe que hay en pantalla.
+   *
+   * Hace falta desde que se arma solo: uno entra en Contar, sale el informe,
+   * y despues cambia el limite o la capa de zonas. El formulario dice una
+   * cosa y las cifras de abajo son de otra, sin nada que lo delate. Guardar
+   * los ajustes usados permite decirlo.
+   */
+  const [ajustesUsados, setAjustesUsados] = useState<AjustesInforme | null>(
+    null,
+  );
   const [informe, setInforme] = useState<Informe | null>(null);
   const [capaInforme, setCapaInforme] = useState<string | null>(null);
   const [laminaAbierta, setLaminaAbierta] = useState(false);
@@ -622,6 +633,7 @@ export default function App() {
         ...previas.filter((c) => !viejas.includes(c.id)),
       ]);
       setInforme(inf);
+      setAjustesUsados(ajustesInforme);
       setCapaInforme(capaPrincipal);
       setUltimo({ puntos, ambito: null, capaId: capaPrincipal ?? "" });
       setRecados([]);
@@ -1116,6 +1128,42 @@ export default function App() {
     });
   }, [capas, zonaId, valoresGuiado, informeTocado]);
 
+  /*
+   * EL INFORME SE ARMA SOLO AL ENTRAR EN CONTAR.
+   *
+   * Antes habia que pulsar para que existiera, y hasta entonces no habia nada
+   * que imprimir: la lamina lleva el mapa dibujado dentro, asi que no es que
+   * el PDF estuviera escondido, es que no existia todavia. Con los tres
+   * desplegables ya puestos, ese paso no decide nada —la respuesta va a ser
+   * la misma se pulse o no— y lo unico que hace es retrasar la lamina.
+   *
+   * Solo la primera vez, y solo si hay de donde: con una capa de registros
+   * elegida y sin informe hecho. Despues no se vuelve a tocar solo, porque
+   * rehacerlo cambia las capas de la mesa y eso tiene que pedirlo alguien.
+   */
+  useEffect(() => {
+    if (modo !== "contar") return;
+    if (informe !== null || calculando) return;
+    if (!ajustesInforme.registros) return;
+    correrInforme();
+  }, [modo, informe, calculando, ajustesInforme, correrInforme]);
+
+  /**
+   * Si el informe de abajo ya no corresponde a lo que dice el formulario.
+   *
+   * Pasa en cuanto se cambia un desplegable despues de armarlo, y con el
+   * armado automatico pasa mas: uno entra, lo lee, y luego trae el limite
+   * urbano. Las cifras se quedan quietas y nada avisa de que son de antes.
+   */
+  const informeDesfasado =
+    informe !== null &&
+    ajustesUsados !== null &&
+    (ajustesUsados.registros !== ajustesInforme.registros ||
+      ajustesUsados.zonas !== ajustesInforme.zonas ||
+      ajustesUsados.ambito !== ajustesInforme.ambito ||
+      ajustesUsados.campo !== ajustesInforme.campo ||
+      ajustesUsados.radio !== ajustesInforme.radio);
+
   /** Un botón del riel: solo icono, con el nombre en el título. */
   const riel = (
     titulo: string,
@@ -1445,6 +1493,7 @@ export default function App() {
                     calculando={calculando}
                     onCorrer={correrInforme}
                     hayInforme={informe !== null}
+                    desfasado={informeDesfasado}
                     onLamina={abrirLamina}
                     error={error}
                   />
