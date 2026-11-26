@@ -35,6 +35,16 @@ export interface Informe {
   /** Cuándo se calculó, para que la lámina lo lleve impreso. */
   generado: string
   avisos: string[]
+  /**
+   * De dónde salen los datos, para el pie de la lámina.
+   *
+   * Viaja con el informe y no se deduce fuera porque depende de QUÉ informe
+   * es: el diagnóstico general habla de una capa de registros y el informe de
+   * análisis habla de los análisis que lleva dentro. Deducirlo en el panel
+   * llevó a imprimir «1.083 equipamientos» al pie de un informe que solo
+   * hablaba de las 166.530 edificaciones.
+   */
+  fuente?: string
 }
 
 const cifra = (n: number, decimales = 2) =>

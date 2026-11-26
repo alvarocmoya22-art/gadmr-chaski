@@ -536,6 +536,53 @@ export default function App() {
      * numero equivocado hace mas dano, porque sale impreso y nadie lo vuelve
      * a mirar.
      */
+    /*
+     * EL INFORME DE ANALISIS NO PASA POR AQUI, y es una rama aparte a proposito.
+     *
+     * Sin diagnostico general no hace falta ni capa de registros, ni ambito,
+     * ni zonas: el informe son los analisis que ya estan hechos. Mientras
+     * compartio camino con el otro, pedia una capa de registros que no usaba
+     * para nada mas que para titular —y la titulaba mal: «Informe ·
+     * Equipamientos» encima de un informe que hablaba de 166.530
+     * edificaciones, con «1.083 equipamientos» de fuente al pie—. Ademas
+     * calculaba el punto representante de cada registro y recortaba el
+     * ambito para tirarlo despues.
+     */
+    if (!ajustesInforme.bateria) {
+      const deLaMesa = analisisDeLaMesa(preparadas);
+      if (deLaMesa.length === 0) return;
+      setCalculando(true);
+      setError(null);
+      setTimeout(() => {
+        setInforme({
+          titulo: "Informe territorial",
+          subtitulo:
+            deLaMesa.length === 1
+              ? `Un análisis · ${deLaMesa[0].nombre}`
+              : `${numero(deLaMesa.length)} análisis de la mesa`,
+          secciones: deLaMesa.map((c) => ({
+            titulo: c.nombre,
+            filas: c.resumen ?? [],
+            lectura: c.metodo,
+          })),
+          generado: new Date().toLocaleString("es-EC", {
+            dateStyle: "long",
+            timeStyle: "short",
+          }),
+          avisos: [],
+          fuente: [...new Set(deLaMesa.map((c) => c.origen))].join(" · "),
+        });
+        setAjustesUsados(ajustesInforme);
+        // La leyenda de la lamina sale de esta; los puntos del analisis no se
+        // tocan, que aqui no hay ninguno que dibujar.
+        setCapaInforme(deLaMesa[0].id);
+        setUltimo({ puntos: [], ambito: null, capaId: "" });
+        setRecados([]);
+        setCalculando(false);
+      }, 30);
+      return;
+    }
+
     const reg = preparadas.find((c) => c.id === ajustesInforme.registros);
     if (!reg) return;
     setCalculando(true);
@@ -677,6 +724,7 @@ export default function App() {
       setInforme({
         ...inf,
         secciones: [...seccionesDeAnalisis, ...inf.secciones],
+        fuente: reg.origen,
       });
       setAjustesUsados(ajustesInforme);
       setCapaInforme(capaDelMapa);
@@ -1641,7 +1689,7 @@ export default function App() {
           informe={informe}
           captura={captura}
           capa={capas.find((c) => c.id === capaInforme) ?? null}
-          fuente={`Fuente: ${capas.find((c) => c.id === ajustesInforme.registros)?.origen ?? "capa cargada en CHASKI"}`}
+          fuente={`Fuente: ${informe.fuente ?? "capa cargada en CHASKI"}`}
           onCerrar={() => setLaminaAbierta(false)}
         />
       )}

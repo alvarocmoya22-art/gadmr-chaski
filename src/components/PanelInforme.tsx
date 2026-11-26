@@ -139,23 +139,28 @@ export default function PanelInforme({
         )}
       </div>
 
-      <label className="block">
-        <span className="text-xs font-semibold text-[var(--gr-tinta-2)]">
-          Los registros de la campaña
-        </span>
-        <select
-          value={ajustes.registros}
-          onChange={(e) => poner({ registros: e.target.value, campo: '' })}
-          className={selectClase}
-        >
-          <option value="">Elige la capa…</option>
-          {capas.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* Tambien es del diagnostico general: es la capa cuyos registros se
+          reparten. El informe de analisis no la usa para nada —se titula por
+          lo que lleva dentro— y pedirla solo servia para titularlo mal. */}
+      {ajustes.bateria && (
+        <label className="block">
+          <span className="text-xs font-semibold text-[var(--gr-tinta-2)]">
+            Los registros de la campaña
+          </span>
+          <select
+            value={ajustes.registros}
+            onChange={(e) => poner({ registros: e.target.value, campo: '' })}
+            className={selectClase}
+          >
+            <option value="">Elige la capa…</option>
+            {capas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* Los tres SOLO alimentan el diagnostico general: las zonas dan el
           reparto, el limite da la superficie de referencia y el campo da el
@@ -282,7 +287,7 @@ export default function PanelInforme({
       <button
         type="button"
         onClick={onCorrer}
-        disabled={calculando || !ajustes.registros || vacio}
+        disabled={calculando || vacio || (ajustes.bateria && !ajustes.registros)}
         className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         {/* Con un informe ya hecho, «armar» suena a empezar otro. Lo que
