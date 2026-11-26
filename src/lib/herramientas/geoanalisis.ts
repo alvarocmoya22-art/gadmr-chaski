@@ -84,9 +84,23 @@ const rotuloDe = (e: Estadistico): string =>
  * reunión, que es para lo que existe el resumen.
  */
 function nombreDeZona(props: Record<string, unknown> | null | undefined): string {
+  if (!props) return 'sin nombre'
+  const vale = (v: unknown) => v !== undefined && v !== null && v !== ''
   for (const clave of ['nombre', 'NOMBRE', 'barrio', 'clave', 'rotulo', 'name', 'numero']) {
-    const v = props?.[clave]
-    if (v !== undefined && v !== null && v !== '') return String(v)
+    if (vale(props[clave])) return String(props[clave])
+  }
+  /*
+   * Y si no, la primera columna que se LLAME como un nombre o un codigo.
+   *
+   * La lista cerrada de arriba dejaba «sin nombre» al PIT del PUGS, que
+   * identifica sus poligonos con `codigo_pit`. Cada capa municipal nombra su
+   * clave a su manera —`cod_barrio`, `codigo_pit`, `nam_pit`— y «la que mas:
+   * 11,9 · sin nombre» obliga a abrir la tabla para saber de cual se habla.
+   */
+  for (const [clave, v] of Object.entries(props)) {
+    if (/nombre|nom_|_nom|codigo|cod_|_cod|clave/i.test(clave) && vale(v)) {
+      return String(v)
+    }
   }
   return 'sin nombre'
 }

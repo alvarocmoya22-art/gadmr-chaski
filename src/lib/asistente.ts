@@ -140,6 +140,52 @@ function parecido(nombre: string, dichas: string[]): number {
   return aciertos / suyas.length;
 }
 
+/**
+ * LA PREPOSICION DE LA RECETA DICE QUE HUECO ES CUAL.
+ *
+ * «La altura media de las edificaciones EN CADA poligono de intervencion» y
+ * «la altura media de los poligonos de intervencion EN CADA edificacion» usan
+ * las mismas dos capas y son preguntas opuestas. Lo que las distingue es el
+ * «en cada», y la receta lo lleva escrito: su frase es «Calcular la media de
+ * ___ de ___ en cada ___», asi que el hueco de zonas viene precedido de «en
+ * cada» y el de entrada, de «de».
+ *
+ * Sin esto, cuando las dos capas son poligonos y las dos se nombran, el
+ * reparto lo decidia el parecido del nombre: las 170 manzanas del PUGS
+ * entraban como la capa a medir y las 166.530 edificaciones como las zonas,
+ * que es la pregunta del reves y ademas tarda un cuarto de hora.
+ *
+ * Devuelve las ultimas palabras del texto que precede al hueco, que son las
+ * que de verdad marcan —«en cada», «de», «desde cada»—.
+ */
+function conectorDe(receta: Receta, clave: string): string[] {
+  let previo = "";
+  for (const parte of receta.frase) {
+    if (typeof parte === "string") previo = parte;
+    else if (parte.clave === clave) break;
+  }
+  return palabras(previo).slice(-2);
+}
+
+/**
+ * Si el nombre de la capa viene precedido en la frase por ese conector.
+ *
+ * Se mira justo delante: una preposicion a cinco palabras de distancia ya no
+ * dice de que capa habla.
+ */
+function traeConector(
+  nombre: string,
+  dichas: string[],
+  conector: string[],
+): boolean {
+  const i = dondeAparece(nombre, dichas);
+  if (!Number.isFinite(i) || conector.length === 0) return false;
+  const antes = dichas.slice(Math.max(0, i - conector.length), i);
+  return (
+    antes.length > 0 && antes[antes.length - 1] === conector[conector.length - 1]
+  );
+}
+
 /** Dónde aparece por primera vez el nombre de una capa en la frase. */
 function dondeAparece(nombre: string, dichas: string[]): number {
   const suyas = palabras(nombre).filter((p) => p.length > 2);
@@ -315,9 +361,15 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
 
     for (const h of porExigencia) {
       if (h.tipo === "capa") {
+        const conector = conectorDe(receta, h.clave);
         const sirven = capas
           .filter((c) => (h.formas ?? []).includes(c.forma) && !usadas.has(c.id))
-          .map((c) => ({ c, p: parecido(c.nombre, dichas), donde: dondeAparece(c.nombre, dichas) }))
+          .map((c) => ({
+            c,
+            p: parecido(c.nombre, dichas),
+            donde: dondeAparece(c.nombre, dichas),
+            conecta: traeConector(c.nombre, dichas, conector),
+          }))
           /*
            * Medio nombre no basta. «Mapa de gravedad · Equipamientos» comparte
            * una palabra con «equipamientos» y se colaba en el segundo hueco de
@@ -325,7 +377,14 @@ export function interpretar(texto: string, capas: Capa[]): Lectura[] {
            * larga del nombre.
            */
           .filter((x) => x.p >= 0.5 && !nombresUsados.has(normalizar(x.c.nombre)))
-          .sort((a, b) => b.p - a.p || a.donde - b.donde);
+          // Primero la que lleva la preposicion del hueco delante; despues, el
+          // parecido del nombre; y a igualdad, la que se nombra antes.
+          .sort(
+            (a, b) =>
+              Number(b.conecta) - Number(a.conecta) ||
+              b.p - a.p ||
+              a.donde - b.donde,
+          );
         if (sirven.length > 0) {
           valores[h.clave] = sirven[0].c.id;
           usadas.add(sirven[0].c.id);
