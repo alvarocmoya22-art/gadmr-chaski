@@ -15,6 +15,16 @@ export interface AjustesInforme {
   ambito: string
   campo: string
   radio: string
+  /**
+   * Si se añade el diagnóstico general: reparto por zona, desigualdad, patrón
+   * espacial, centro de gravedad, cobertura y puntos calientes.
+   *
+   * Es una batería fija, la misma sea cual sea el estudio. Vale cuando no hay
+   * nada más que contar; estorba cuando el informe tiene que hablar de los
+   * análisis que uno acaba de correr. Por eso se elige, y por eso el radio
+   * —que solo alimenta la sección de cobertura— cuelga de esta casilla.
+   */
+  bateria: boolean
 }
 
 export const INFORME_INICIAL: AjustesInforme = {
@@ -23,6 +33,7 @@ export const INFORME_INICIAL: AjustesInforme = {
   ambito: '',
   campo: '',
   radio: '500',
+  bateria: true,
 }
 
 interface Props {
@@ -67,8 +78,8 @@ export default function PanelInforme({
   return (
     <section className="space-y-3">
       <p className="text-xs leading-snug text-[var(--gr-tinta-3)]">
-        Corre de una vez el reparto por zona, la desigualdad, el patrón espacial, el centro
-        de gravedad, la cobertura y los puntos calientes. Devuelve el informe escrito y una
+        Recoge los análisis que están en la mesa: cada capa calculada aporta sus cifras y
+        su método, en el orden en que se corrieron. Devuelve el informe escrito y una
         lámina para imprimir.
       </p>
 
@@ -163,23 +174,46 @@ export default function PanelInforme({
         </label>
       )}
 
-      <label className="block">
-        <span className="text-xs font-semibold text-[var(--gr-tinta-2)]">
-          Radio de cobertura (m)
-        </span>
+      <label className="flex items-start gap-2">
         <input
-          type="number"
-          min={50}
-          max={5000}
-          step={50}
-          value={ajustes.radio}
-          onChange={(e) => poner({ radio: e.target.value })}
-          className={selectClase}
+          type="checkbox"
+          checked={ajustes.bateria}
+          onChange={(e) => poner({ bateria: e.target.checked })}
+          className="mt-0.5"
         />
-        <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
-          Cuánto territorio quedó a esta distancia de algún registro.
+        <span>
+          <span className="block text-xs font-semibold text-[var(--gr-tinta-2)]">
+            Añadir el diagnóstico general
+          </span>
+          <span className="block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            Reparto por zona, desigualdad, patrón espacial, centro de gravedad,
+            cobertura y puntos calientes. Son las mismas seis medidas para
+            cualquier estudio: útiles cuando no hay más que contar, de más
+            cuando el informe ya habla de lo que analizaste.
+          </span>
         </span>
       </label>
+
+      {ajustes.bateria && (
+        <label className="block">
+          <span className="text-xs font-semibold text-[var(--gr-tinta-2)]">
+            Radio de cobertura (m)
+          </span>
+          <input
+            type="number"
+            min={50}
+            max={5000}
+            step={50}
+            value={ajustes.radio}
+            onChange={(e) => poner({ radio: e.target.value })}
+            className={selectClase}
+          />
+          <span className="mt-0.5 block text-[11px] leading-snug text-[var(--gr-tinta-3)]">
+            Cuánto territorio quedó a esta distancia de algún registro. Solo
+            alimenta esa sección del diagnóstico general.
+          </span>
+        </label>
+      )}
 
       <button
         type="button"

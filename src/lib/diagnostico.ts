@@ -121,6 +121,14 @@ export interface EntradaDiagnostico {
   campo: string | null
   /** Radio de cobertura, en metros. */
   radio: number
+  /**
+   * Si se pide el diagnóstico general: la batería fija de seis medidas.
+   *
+   * Con `false` solo sale la portada y el informe lo arman los análisis que
+   * ya están en la mesa, que es lo que corresponde cuando el estudio tiene
+   * algo propio que contar.
+   */
+  general: boolean
 }
 
 /** Lado de la rejilla con la que se mide la cobertura, en metros. */
@@ -130,6 +138,29 @@ export function diagnosticar(e: EntradaDiagnostico): Informe {
   const avisos: string[] = []
   const secciones: Seccion[] = []
   const n = e.puntos.length
+
+  /*
+   * SIN DIAGNÓSTICO GENERAL NO SE CALCULA NADA DE ESTO.
+   *
+   * Lo que viene abajo —reparto, desigualdad, patrón, centro de gravedad,
+   * cobertura y las zonas en cero— es la misma batería para cualquier
+   * estudio, y quien la quita no quiere que se calcule a escondidas: el
+   * vecino más cercano recorre los registros dos a dos y la rejilla de
+   * cobertura barre el ámbito entero. El informe lo arman entonces los
+   * análisis que ya están en la mesa y aquí solo se pone la portada.
+   *
+   * Tampoco se avisa de nada. Ni de que el ámbito es deducido ni de que es
+   * grande para la rejilla: son avisos sobre cifras que no se imprimen.
+   */
+  if (!e.general) {
+    return {
+      titulo: `Informe · ${e.nombreCapa}`,
+      subtitulo: `${numero(n)} registros${e.campo ? ` separados por «${e.campo}»` : ''}`,
+      secciones,
+      generado: new Date().toLocaleString('es-EC', { dateStyle: 'long', timeStyle: 'short' }),
+      avisos,
+    }
+  }
 
   const caja = cajaDe(e.piezas.flat())
   const plano = planoLocal((caja[0] + caja[2]) / 2, (caja[1] + caja[3]) / 2)
@@ -304,7 +335,9 @@ export function diagnosticar(e: EntradaDiagnostico): Informe {
         lectura: `${porcentaje(pct)} del ámbito queda a menos de ${numero(e.radio)} m de algún registro, medido en línea recta sobre una rejilla de ${CELDA_COBERTURA} m. El resto son ${numero(Math.round(((dentro - cubiertas) * CELDA_COBERTURA * CELDA_COBERTURA) / 1e4))} hectáreas donde no llegó nada.`,
       })
     }
-  } else {
+  } else if (n > 0) {
+    // Solo si de verdad no cabe. Antes este aviso salía también sin registros
+    // y, peor, cuando no se había pedido cobertura ninguna.
     avisos.push('El ámbito es demasiado grande para medir la cobertura con una rejilla de 100 m.')
   }
 

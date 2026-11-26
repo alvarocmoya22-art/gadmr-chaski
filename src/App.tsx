@@ -577,7 +577,16 @@ export default function App() {
       const nuevas: Capa[] = [];
       let capaPrincipal: string | null = null;
 
-      if (capaZonas) {
+      /*
+       * Las dos capas son DEL DIAGNOSTICO GENERAL, asi que cuelgan de el.
+       *
+       * Sin esa casilla el informe habla de los analisis que ya estan en la
+       * mesa, y añadir un conteo por zona y unos puntos calientes que nadie
+       * pidio solo ensucia la lista. El mapa de la lamina sale entonces con
+       * las capas que el usuario tenga encendidas, que es lo coherente: es su
+       * estudio.
+       */
+      if (ajustesInforme.bateria && capaZonas) {
         const h = HERRAMIENTAS.find((x) => x.clave === "agregar-puntos")!;
         const r = h.correr({
           capa: reg,
@@ -597,7 +606,7 @@ export default function App() {
       }
 
       const hs = HERRAMIENTAS.find((x) => x.clave === "hotspot")!;
-      const rh = hs.correr({
+      const rh = ajustesInforme.bateria ? hs.correr({
         capa: reg,
         capas: preparadas,
         valores: {
@@ -607,11 +616,44 @@ export default function App() {
           ambito: capaAmbito?.id ?? "",
           celda: "150",
         },
-      });
+      }) : { error: "sin diagnostico general" };
       if (!("error" in rh)) {
         nuevas.push(rh.capa);
         if (!capaPrincipal) capaPrincipal = rh.capa.id;
       }
+
+      /*
+       * EL INFORME RECOGE LO QUE SE ANALIZO, y eso va primero.
+       *
+       * Antes corria una bateria fija —reparto, desigualdad, patron, centro,
+       * cobertura y puntos calientes— sea cual fuera el estudio. Si uno
+       * acababa de medir la oferta de salud por habitante o la conectividad
+       * de la trama, el informe no decia una palabra de eso: calculaba sus
+       * seis cosas con su radio. El analisis tiene que estar enfocado al
+       * estudio que se esta haciendo, no al reves.
+       *
+       * Cada herramienta ya deja en su capa lo que hace falta: `resumen` son
+       * sus cifras y `metodo` es como se obtuvieron. Eso ES una seccion de
+       * informe, solo que hasta hoy nadie la miraba. Van en el orden de la
+       * mesa, asi que arrastrar una capa reordena el informe.
+       *
+       * Las que creo el propio informe se quedan fuera: sus cifras ya salen
+       * en la bateria y se contarian dos veces.
+       */
+      const propias = capasDelInforme.current;
+      const seccionesDeAnalisis = preparadas
+        .filter(
+          (c) =>
+            c.derivada &&
+            !propias.includes(c.id) &&
+            c.resumen &&
+            c.resumen.length > 0,
+        )
+        .map((c) => ({
+          titulo: c.nombre,
+          filas: c.resumen ?? [],
+          lectura: c.metodo,
+        }));
 
       const inf = diagnosticar({
         nombreCapa: reg.nombre,
@@ -624,6 +666,7 @@ export default function App() {
           : null,
         campo,
         radio: Number.parseFloat(ajustesInforme.radio) || 500,
+        general: ajustesInforme.bateria,
       });
 
       const viejas = capasDelInforme.current;
@@ -632,7 +675,10 @@ export default function App() {
         ...nuevas,
         ...previas.filter((c) => !viejas.includes(c.id)),
       ]);
-      setInforme(inf);
+      setInforme({
+        ...inf,
+        secciones: [...seccionesDeAnalisis, ...inf.secciones],
+      });
       setAjustesUsados(ajustesInforme);
       setCapaInforme(capaPrincipal);
       setUltimo({ puntos, ambito: null, capaId: capaPrincipal ?? "" });
@@ -1113,40 +1159,33 @@ export default function App() {
      * Lo calculado gana, salvo que salga vacio: ahi se respeta lo que hubiera,
      * porque borrar una eleccion nunca es una mejora.
      */
+    /*
+     * La bateria se ofrece solo si no hay nada mas que contar.
+     *
+     * Con analisis en la mesa, el informe ya tiene de que hablar y las seis
+     * medidas fijas son relleno —y arrastran un radio de cobertura que nadie
+     * pidio—. Sin analisis, son lo unico que hay y entonces si valen.
+     */
+    const hayAnalisis = capas.some(
+      (c) => c.derivada && c.resumen && c.resumen.length > 0,
+    );
+
     setAjustesInforme((a) => {
       const nuevo = {
         ...a,
         registros: registros || a.registros,
         zonas: zonas || a.zonas,
         ambito: limite || a.ambito,
+        bateria: !hayAnalisis,
       };
       const igual =
         nuevo.registros === a.registros &&
         nuevo.zonas === a.zonas &&
-        nuevo.ambito === a.ambito;
+        nuevo.ambito === a.ambito &&
+        nuevo.bateria === a.bateria;
       return igual ? a : nuevo;
     });
   }, [capas, zonaId, valoresGuiado, informeTocado]);
-
-  /*
-   * EL INFORME SE ARMA SOLO AL ENTRAR EN CONTAR.
-   *
-   * Antes habia que pulsar para que existiera, y hasta entonces no habia nada
-   * que imprimir: la lamina lleva el mapa dibujado dentro, asi que no es que
-   * el PDF estuviera escondido, es que no existia todavia. Con los tres
-   * desplegables ya puestos, ese paso no decide nada —la respuesta va a ser
-   * la misma se pulse o no— y lo unico que hace es retrasar la lamina.
-   *
-   * Solo la primera vez, y solo si hay de donde: con una capa de registros
-   * elegida y sin informe hecho. Despues no se vuelve a tocar solo, porque
-   * rehacerlo cambia las capas de la mesa y eso tiene que pedirlo alguien.
-   */
-  useEffect(() => {
-    if (modo !== "contar") return;
-    if (informe !== null || calculando) return;
-    if (!ajustesInforme.registros) return;
-    correrInforme();
-  }, [modo, informe, calculando, ajustesInforme, correrInforme]);
 
   /**
    * Si el informe de abajo ya no corresponde a lo que dice el formulario.
@@ -1162,7 +1201,8 @@ export default function App() {
       ajustesUsados.zonas !== ajustesInforme.zonas ||
       ajustesUsados.ambito !== ajustesInforme.ambito ||
       ajustesUsados.campo !== ajustesInforme.campo ||
-      ajustesUsados.radio !== ajustesInforme.radio);
+      ajustesUsados.radio !== ajustesInforme.radio ||
+      ajustesUsados.bateria !== ajustesInforme.bateria);
 
   /** Un botón del riel: solo icono, con el nombre en el título. */
   const riel = (
