@@ -184,7 +184,14 @@ export default function PanelInforme({
         disabled={calculando || !ajustes.registros}
         className="w-full rounded bg-[var(--gr-azul-500)] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {calculando ? 'Calculando…' : 'Armar el informe'}
+        {/* Con un informe ya hecho, «armar» suena a empezar otro. Lo que
+            hace es rehacerlo con lo que haya cambiado, y reemplaza sus
+            propias capas en vez de añadir dos mas. */}
+        {calculando
+          ? 'Calculando…'
+          : hayInforme
+            ? 'Rehacer el informe'
+            : 'Armar el informe'}
       </button>
 
       {hayInforme && (

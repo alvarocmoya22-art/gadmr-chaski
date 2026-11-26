@@ -182,6 +182,20 @@ export default function App() {
    * discusion.
    */
   const [informeTocado, setInformeTocado] = useState(false);
+  /*
+   * Las capas que creo el informe la ultima vez.
+   *
+   * El informe necesita dos capas para la lamina —el conteo por zona y los
+   * puntos calientes— y las creaba cada vez sin quitar las anteriores: a la
+   * tercera pulsacion habia seis capas iguales con el mismo nombre. De ahi la
+   * sensacion de que Contar es «otro proceso»: porque lo era, y ademas se
+   * acumulaba.
+   *
+   * Son capas DEL INFORME, no del usuario: volver a armarlo las reemplaza.
+   * Las que el usuario calculo a mano en Analizar no se tocan, aunque se
+   * llamen igual, porque no estan en esta lista.
+   */
+  const capasDelInforme = useRef<string[]>([]);
   const [informe, setInforme] = useState<Informe | null>(null);
   const [capaInforme, setCapaInforme] = useState<string | null>(null);
   const [laminaAbierta, setLaminaAbierta] = useState(false);
@@ -601,7 +615,12 @@ export default function App() {
         radio: Number.parseFloat(ajustesInforme.radio) || 500,
       });
 
-      setCapas((previas) => [...nuevas, ...previas]);
+      const viejas = capasDelInforme.current;
+      capasDelInforme.current = nuevas.map((c) => c.id);
+      setCapas((previas) => [
+        ...nuevas,
+        ...previas.filter((c) => !viejas.includes(c.id)),
+      ]);
       setInforme(inf);
       setCapaInforme(capaPrincipal);
       setUltimo({ puntos, ambito: null, capaId: capaPrincipal ?? "" });
@@ -621,6 +640,9 @@ export default function App() {
 
   const quitar = useCallback(
     (id: string) => {
+      // Si quita a mano una capa del informe, deja de ser del informe: no se
+      // puede reemplazar algo que ya no esta.
+      capasDelInforme.current = capasDelInforme.current.filter((x) => x !== id);
       setCapas((cs) => cs.filter((c) => c.id !== id));
       if (capaId === id) setCapaId(null);
       /*
